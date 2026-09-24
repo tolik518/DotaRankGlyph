@@ -23,6 +23,11 @@ class RankStore(context: Context) {
         get() = prefs.getBoolean(KEY_USE_ICON_PACK, false)
         set(value) = prefs.edit().putBoolean(KEY_USE_ICON_PACK, value).apply()
 
+    /** Show the Immortal leaderboard place (e.g. 2488) on the Immortal medal. On by default. */
+    var showImmortalRank: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_IMMORTAL_RANK, true)
+        set(value) = prefs.edit().putBoolean(KEY_SHOW_IMMORTAL_RANK, value).apply()
+
     /** Automatic refresh interval for the toy, see [RefreshInterval]. */
     var refreshIntervalMinutes: Int
         get() = RefreshInterval.clamp(prefs.getInt(KEY_REFRESH_INTERVAL, RefreshInterval.DEFAULT_MINUTES))
@@ -68,6 +73,7 @@ class RankStore(context: Context) {
         const val KEY_USE_ICON_PACK = "use_icon_pack"
         const val KEY_ICON_PACK_VERSION = "icon_pack_version"
         const val KEY_REFRESH_INTERVAL = "refresh_interval_minutes"
+        const val KEY_SHOW_IMMORTAL_RANK = "show_immortal_rank"
         private const val KEY_CACHED_ACCOUNT = "cached_account_id"
         private const val KEY_PERSONA = "persona_name"
         private const val KEY_RANK_TIER = "rank_tier"

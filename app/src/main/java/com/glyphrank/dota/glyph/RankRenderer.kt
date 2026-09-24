@@ -16,7 +16,7 @@ import kotlin.math.sin
  *  - Centre: the stars as a constellation of small crosses on an orbit
  *    (1 = single star on top, 3 = triangle, 4 = square, 5 = pentagon ...),
  *    with empty star slots shown dim.
- *  - Immortal: all arcs lit, leaderboard position in the centre (if known).
+ *  - Immortal: all arcs lit, leaderboard position in the centre (if known and enabled).
  */
 class RankRenderer(
     private val full: Int = MatrixLayout.MAX_BRIGHTNESS,
@@ -24,22 +24,27 @@ class RankRenderer(
 ) {
     /**
      * Renders [state]. With an [iconPack], Herald..Immortal use the pack's icon for that
-     * medal (stars overlaid on the top arc); tiers missing from the pack, and status
-     * screens, use the built-in emblem.
+     * medal (stars overlaid on the top arc, the Immortal leaderboard place on a plate in the
+     * lower part if [showImmortalRank]); tiers missing from the pack, and status screens,
+     * use the built-in emblem.
      */
-    fun render(state: RankState, iconPack: IconPack?): IntArray {
+    fun render(state: RankState, iconPack: IconPack?, showImmortalRank: Boolean = true): IntArray {
         val icon = when (state) {
             is RankState.Ranked -> iconPack?.iconFor(state.medal)
             is RankState.Immortal -> iconPack?.iconFor(Medal.IMMORTAL)
             RankState.Uncalibrated -> null
-        } ?: return render(state)
+        } ?: return render(state, showImmortalRank)
         return MatrixCanvas().apply {
             icon.copyInto(pixels)
-            if (state is RankState.Ranked) drawStarPips(state.stars)
+            when (state) {
+                is RankState.Ranked -> drawStarPips(state.stars)
+                is RankState.Immortal -> if (showImmortalRank) state.leaderboardRank?.let { drawRankPlate(it) }
+                RankState.Uncalibrated -> Unit
+            }
         }.toArray()
     }
 
-    fun render(state: RankState): IntArray = when (state) {
+    fun render(state: RankState, showImmortalRank: Boolean = true): IntArray = when (state) {
         RankState.Uncalibrated -> message("?", scale = 2)
         is RankState.Ranked -> MatrixCanvas().apply {
             drawRing(litArcs = state.medal.tierNumber)
@@ -48,7 +53,7 @@ class RankRenderer(
         is RankState.Immortal -> MatrixCanvas().apply {
             drawRing(litArcs = ARCS)
             val lb = state.leaderboardRank
-            if (lb != null && lb in 1..9999) {
+            if (showImmortalRank && lb != null && lb in 1..9999) {
                 PixelFont.drawCentered(this, lb.toString(), top = 10, value = full)
             } else {
                 drawStar(MatrixLayout.CENTER, MatrixLayout.CENTER, full, big = true)
@@ -125,16 +130,10 @@ class RankRenderer(
         if (stars <= 0) return
         val spacing = if (stars > RankTier.CURRENT_STAR_SLOTS) PIP_SPACING_DENSE_DEG else PIP_SPACING_DEG
         val halfSpan = (stars - 1) / 2.0 * spacing
-        val cut = BooleanArray(pixels.size)
-        forEachLed { x, y ->
-            if (MatrixLayout.radius(x, y) < BAND_INNER_RADIUS) return@forEachLed
+        cutOut { x, y ->
             val a = MatrixLayout.angle(x, y).let { if (it > 180.0) it - 360.0 else it }
-            if (abs(a) <= halfSpan + BAND_MARGIN_DEG) {
-                if (this[x, y] > 0) cut[MatrixLayout.index(x, y)] = true
-                this[x, y] = 0
-            }
+            MatrixLayout.radius(x, y) >= BAND_INNER_RADIUS && abs(a) <= halfSpan + BAND_MARGIN_DEG
         }
-        removeCutOffFragments(cut)
         for (i in 0 until stars) {
             val theta = Math.toRadians((i - (stars - 1) / 2.0) * spacing)
             val px = (MatrixLayout.CENTER + PIP_RADIUS * sin(theta)).roundToInt()
@@ -144,9 +143,9 @@ class RankRenderer(
     }
 
     /**
-     * Clears tiny pieces of art that the band sliced off the rest of the icon
-     * ([cut] = art LEDs the band switched off). On the matrix a lone lit LED next to
-     * the band is indistinguishable from a star pip.
+     * Clears tiny pieces of art that a cut (star band, rank plate) sliced off the rest of
+     * the icon ([cut] = art LEDs it switched off). On the matrix a lone lit LED next to the
+     * cut looks like an extra star or a stray dot.
      */
     private fun MatrixCanvas.removeCutOffFragments(cut: BooleanArray) {
         val seen = BooleanArray(pixels.size)
@@ -173,6 +172,36 @@ class RankRenderer(
             }
             if (touchesCut && fragment.size <= MAX_CUT_OFF_FRAGMENT) fragment.forEach { pixels[it] = 0 }
         }
+    }
+
+    /**
+     * Immortal leaderboard place in the 3x5 font on a dark plate cut into the lower part of
+     * the art (1 LED of margin all round). It sits as low as it fits inside the LED circle,
+     * so 1-4 digits use rows 17-21 and 5 digits rows 16-20.
+     */
+    private fun MatrixCanvas.drawRankPlate(rank: Int) {
+        if (rank <= 0) return
+        val text = rank.toString()
+        val width = PixelFont.textWidth(text)
+        val left = (MatrixLayout.SIZE - width) / 2
+        val right = left + width - 1
+        val top = (PLATE_LOWEST_TOP downTo 0).firstOrNull { t ->
+            (t until t + PixelFont.HEIGHT).all { y -> MatrixLayout.isLed(left, y) && MatrixLayout.isLed(right, y) }
+        } ?: return
+        cutOut { x, y -> y in top - 1..top + PixelFont.HEIGHT && x in left - 1..right + 1 }
+        PixelFont.drawCentered(this, text, top = top, value = full)
+    }
+
+    /** Switches off the LEDs [inArea] and any tiny pieces of art that this cuts off. */
+    private inline fun MatrixCanvas.cutOut(inArea: (x: Int, y: Int) -> Boolean) {
+        val cut = BooleanArray(pixels.size)
+        forEachLed { x, y ->
+            if (inArea(x, y)) {
+                if (this[x, y] > 0) cut[MatrixLayout.index(x, y)] = true
+                this[x, y] = 0
+            }
+        }
+        removeCutOffFragments(cut)
     }
 
     private fun MatrixCanvas.drawStar(cx: Int, cy: Int, value: Int, big: Boolean = false) {
@@ -208,6 +237,7 @@ class RankRenderer(
         private const val PIP_SPACING_DEG = 17.0
         private const val PIP_SPACING_DENSE_DEG = 13.0
         private const val MAX_CUT_OFF_FRAGMENT = 2
+        private const val PLATE_LOWEST_TOP = 17
         private const val SPINNER_STEP_DEG = 15.0
         private const val SPINNER_TAIL_DEG = 120.0
 

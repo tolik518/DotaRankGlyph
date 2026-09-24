@@ -198,7 +198,7 @@ class MainActivity : Activity() {
 
     private fun showPlayer(player: PlayerRank) {
         currentPlayer = player
-        preview.frame = renderer.render(player.state, activeIconPack())
+        preview.frame = renderer.render(player.state, activeIconPack(), store.showImmortalRank)
         val name = player.personaName ?: "Player ${player.accountId}"
         status.setTextColor(TEXT)
         status.text = "$name\n${RankTier.describe(player.state)}  (rank_tier ${player.rankTier ?: "none"})"
@@ -215,7 +215,7 @@ class MainActivity : Activity() {
     private fun glyphFrame(): IntArray {
         val cached = store.cachedForCurrentAccount()
         return when {
-            cached != null -> renderer.render(cached.player.state, activeIconPack())
+            cached != null -> renderer.render(cached.player.state, activeIconPack(), store.showImmortalRank)
             store.accountId == null -> renderer.message("ID")
             else -> renderer.loading(0)
         }
@@ -308,7 +308,7 @@ class MainActivity : Activity() {
     }
 
     private fun refreshPreview() {
-        currentPlayer?.let { preview.frame = renderer.render(it.state, activeIconPack()) }
+        currentPlayer?.let { preview.frame = renderer.render(it.state, activeIconPack(), store.showImmortalRank) }
     }
 
     private fun openToyManager() {
@@ -383,6 +383,20 @@ class MainActivity : Activity() {
         ), spaced(top = 4))
 
         column.addView(text("ICON STYLE", 14f, TEXT, bold = true), spaced(top = 24))
+        column.addView(Switch(this).apply {
+            text = "Show exact rank for Immortals"
+            setTextColor(TEXT)
+            typeface = Typeface.MONOSPACE
+            isChecked = store.showImmortalRank
+            setOnCheckedChangeListener { _, checked ->
+                store.showImmortalRank = checked
+                refreshPreview()
+            }
+        }, spaced(top = 8))
+        column.addView(text(
+            "Immortal medals show the leaderboard place, e.g. 2488, when OpenDota has one.",
+            13f, MUTED,
+        ), spaced(top = 4))
         packSwitch = Switch(this).apply {
             text = "Override with imported icon pack"
             setTextColor(TEXT)

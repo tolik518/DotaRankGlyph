@@ -1,5 +1,6 @@
 package com.glyphrank.dota.glyph
 
+import com.glyphrank.dota.data.OpenDotaParser
 import com.glyphrank.dota.rank.Medal
 import com.glyphrank.dota.rank.RankState
 import com.glyphrank.dota.rank.RankTier
@@ -111,7 +112,9 @@ class RankRendererTest {
     @Test fun `pack without stars shows the icon as is`() {
         val icon = brightPack.iconFor(Medal.ARCHON)!!
         assertTrue(renderer.render(RankState.Ranked(Medal.ARCHON, 0), brightPack).contentEquals(icon))
-        assertTrue(renderer.render(RankState.Immortal(5), brightPack).contentEquals(brightPack.iconFor(Medal.IMMORTAL)!!))
+        val immortal = brightPack.iconFor(Medal.IMMORTAL)!!
+        assertTrue(renderer.render(RankState.Immortal(null), brightPack).contentEquals(immortal))
+        assertTrue(renderer.render(RankState.Immortal(5), brightPack, showImmortalRank = false).contentEquals(immortal))
     }
 
     @Test fun `tiers missing from the pack and status screens use the built-in art`() {
@@ -141,6 +144,101 @@ class RankRendererTest {
             val f = renderer.render(RankState.Ranked(medal, stars), bundled)
             assertEquals("$medal stars=$stars", stars, isolatedPips(f, minValue = 1, upperHalfOnly = true))
         }
+    }
+
+    // --- Immortal leaderboard place ------------------------------------------------------
+
+    /** ZQuixotix: captured OpenDota response, rank_tier 80, leaderboard_rank 2488. */
+    private val zquixotix = OpenDotaParser.parsePlayer(
+        116233682,
+        javaClass.getResource("/opendota/player_116233682.json")!!.readText(),
+    )
+
+    @Test fun `ZQuixotix shows 2488 on the immortal medal`() {
+        assertEquals(RankState.Immortal(2488), zquixotix.state)
+        val f = renderer.render(zquixotix.state, bundled, showImmortalRank = true)
+        val top = plateTop(f, "2488")
+        assertEquals("plate sits on rows 17-21", 17, top)
+        assertTrue(fitsOnLeds("2488", top!!))
+        assertUntouchedOutsidePlate(f, bundled.iconFor(Medal.IMMORTAL)!!, "2488", top)
+    }
+
+    @Test fun `setting off or no leaderboard place shows the immortal medal as is`() {
+        val medal = bundled.iconFor(Medal.IMMORTAL)!!
+        assertTrue(renderer.render(zquixotix.state, bundled, showImmortalRank = false).contentEquals(medal))
+        assertTrue(renderer.render(RankState.Immortal(null), bundled, showImmortalRank = true).contentEquals(medal))
+    }
+
+    @Test fun `every leaderboard length fits inside the led circle`() {
+        for ((place, expectedTop) in listOf(1 to 17, 42 to 17, 999 to 17, 5000 to 17, 12345 to 16)) {
+            val text = place.toString()
+            val f = renderer.render(RankState.Immortal(place), bundled)
+            val top = plateTop(f, text)
+            assertEquals("place=$place", expectedTop, top)
+            assertTrue("place=$place", fitsOnLeds(text, top!!))
+        }
+    }
+
+    @Test fun `the plate leaves no stray leds behind`() {
+        // Regression: 5 digits cut the medal's bottom tip off, leaving one lit LED under the number.
+        for (place in listOf(1, 2488, 12345)) {
+            val text = place.toString()
+            val f = renderer.render(RankState.Immortal(place), bundled)
+            val top = plateTop(f, text)!!
+            val left = (MatrixLayout.SIZE - PixelFont.textWidth(text)) / 2
+            MatrixCanvas().forEachLed { x, y ->
+                val inPlate = y in top - 1..top + PixelFont.HEIGHT && x in left - 1..left + PixelFont.textWidth(text)
+                if (!inPlate && f[MatrixLayout.index(x, y)] > 0) {
+                    val hasLitNeighbour = (-1..1).any { dy ->
+                        (-1..1).any { dx ->
+                            (dx != 0 || dy != 0) && MatrixLayout.isLed(x + dx, y + dy) && f[MatrixLayout.index(x + dx, y + dy)] > 0
+                        }
+                    }
+                    assertTrue("place=$place: lone LED at ($x,$y)", hasLitNeighbour)
+                }
+            }
+        }
+    }
+
+    @Test fun `built-in immortal emblem follows the setting too`() {
+        val withPlace = renderer.render(RankState.Immortal(2488), showImmortalRank = true)
+        val without = renderer.render(RankState.Immortal(2488), showImmortalRank = false)
+        assertFalse(withPlace.contentEquals(without))
+        assertTrue(without.contentEquals(renderer.render(RankState.Immortal(null))))
+    }
+
+    /** Top row where [text] appears exactly (lit strokes, dark gaps and a 1-LED dark margin), or null. */
+    private fun plateTop(frame: IntArray, text: String): Int? {
+        val width = PixelFont.textWidth(text)
+        val left = (MatrixLayout.SIZE - width) / 2
+        return (1..MatrixLayout.SIZE - PixelFont.HEIGHT).firstOrNull { top ->
+            val expected = MatrixCanvas().also { PixelFont.drawCentered(it, text, top, full) }.pixels
+            (top - 1..top + PixelFont.HEIGHT).all { y ->
+                (left - 1..left + width).all { x ->
+                    !MatrixLayout.isLed(x, y) || frame[MatrixLayout.index(x, y)] == expected[MatrixLayout.index(x, y)]
+                }
+            }
+        }
+    }
+
+    /** No stroke of [text] at [top] falls outside the LED circle (compared with the centred position). */
+    private fun fitsOnLeds(text: String, top: Int): Boolean {
+        fun lit(t: Int) = MatrixCanvas().also { PixelFont.drawCentered(it, text, t, full) }.pixels.count { it > 0 }
+        return lit(top) == lit(MatrixLayout.CENTER - 2)
+    }
+
+    private fun assertUntouchedOutsidePlate(frame: IntArray, icon: IntArray, text: String, top: Int) {
+        val width = PixelFont.textWidth(text)
+        val left = (MatrixLayout.SIZE - width) / 2
+        var removed = 0
+        MatrixCanvas().forEachLed { x, y ->
+            val inPlate = y in top - 1..top + PixelFont.HEIGHT && x in left - 1..left + width
+            val v = frame[MatrixLayout.index(x, y)]
+            if (inPlate) return@forEachLed
+            if (v == 0 && icon[MatrixLayout.index(x, y)] > 0) removed++ else assertEquals("($x,$y)", icon[MatrixLayout.index(x, y)], v)
+        }
+        // Outside the plate the art is unchanged, apart from a tiny piece the plate may cut off.
+        assertTrue("removed=$removed", removed <= 2)
     }
 
     /** Lit LEDs whose LED neighbours are all off = star pips punched into the art. */

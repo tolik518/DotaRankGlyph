@@ -121,7 +121,9 @@ class DotaRankToyService : GlyphMatrixService("DotaRankToy") {
 
     private fun cachedMedal(): IntArray? {
         val s = store ?: return null
-        return s.cachedForCurrentAccount()?.let { renderer.render(it.player.state, activeIconPack(s)) }
+        return s.cachedForCurrentAccount()?.let {
+            renderer.render(it.player.state, activeIconPack(s), s.showImmortalRank)
+        }
     }
 
     /** Bundled Dota medals are the default; imported icons override them when selected. */

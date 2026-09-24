@@ -7,7 +7,9 @@ A Glyph Toy for the **Nothing Phone (3)** that shows your Dota 2 rank on the Gly
 ## Medal display
 
 - The eight grayscale Dota 2 medal icons are bundled in the app and used by default.
-- Earned stars appear as small bright LEDs along the top of Herald through Divine medals. The settings screen also shows an Immortal leaderboard place when OpenDota returns one.
+- Earned stars appear as small bright LEDs along the top of Herald through Divine medals.
+- **Show exact rank for Immortals** (on by default): the Immortal medal shows the leaderboard place (e.g. `2488`)
+  on a dark plate in its lower part, when OpenDota returns one. Up to 5 digits fit.
 - **Status:** `?` uncalibrated, `ID` no account set, spinner = loading the first rank.
   Reloading a known rank shakes the medal instead (always at least one full shake).
 - **Errors** are only shown in the app. The Glyph (and the app preview) keep showing the last known medal.
@@ -89,7 +91,7 @@ No AndroidX or Compose: the only dependency is the Glyph SDK, so the build stays
 
 ## Tests
 
-`./gradlew test` runs 57 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
+`./gradlew test` runs 62 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
 the OpenDota client against a local mock server (captured player responses in `app/src/test/resources/opendota/`;
 404, 429, 5xx, HTML/truncated bodies, timeouts, no connection, non-Latin names), auto refresh interval limits,
 matrix geometry, renderer checks (lit arcs = tier, one cross per star, nothing drawn outside the LED circle),
