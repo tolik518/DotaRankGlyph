@@ -1,6 +1,7 @@
 package com.glyphrank.dota.ui
 
 import android.app.Activity
+import android.content.pm.ApplicationInfo
 import android.appwidget.AppWidgetManager
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
@@ -37,9 +38,11 @@ import com.glyphrank.dota.data.RefreshInterval
 import com.glyphrank.dota.data.RefreshPolicy.Decision
 import com.glyphrank.dota.data.SteamProfileResolver
 import com.glyphrank.dota.glyph.MedalArt
+import com.glyphrank.dota.glyph.RankAnimation
 import com.glyphrank.dota.glyph.RankCelebration
 import com.glyphrank.dota.glyph.RankRenderer
 import com.glyphrank.dota.glyph.ReloadShake
+import com.glyphrank.dota.rank.Medal
 import com.glyphrank.dota.rank.PlayerInput
 import com.glyphrank.dota.rank.RankState
 import com.glyphrank.dota.rank.RankTier
@@ -398,6 +401,19 @@ class MainActivity : Activity() {
 
     // --- preview ----------------------------------------------------------------
 
+    // --- debug: replay the rank-change animations -------------------------------
+
+    private val isDebugBuild get() = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    private var nextSample = 0
+
+    /** Debug builds only: long-press the preview to play the next sample rank change (preview and Glyph). */
+    private fun replaySampleAnimation() {
+        if (ReloadShake.isShaking || RankCelebration.isBusy) return
+        val (label, old, new) = SAMPLE_CHANGES[nextSample++ % SAMPLE_CHANGES.size]
+        Toast.makeText(this, "Debug: $label", Toast.LENGTH_SHORT).show()
+        RankCelebration.play(RankAnimation().frames(old, new, medals, store.showImmortalRank))
+    }
+
     // --- share menu -------------------------------------------------------------
 
     private val shareTarget get() = ComponentName(this, "com.glyphrank.dota.ui.ShareTarget")
@@ -533,7 +549,9 @@ class MainActivity : Activity() {
         }
         column.addView(toyPrompt, spaced(bottom = 16))
 
-        preview = MatrixPreviewView(this)
+        preview = MatrixPreviewView(this).apply {
+            if (isDebugBuild) setOnLongClickListener { replaySampleAnimation(); true }
+        }
         column.addView(preview, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT,
         ).apply { gravity = Gravity.CENTER_HORIZONTAL })
@@ -651,5 +669,16 @@ class MainActivity : Activity() {
         const val CHECK_COOLDOWN_MS = 5_000L
         const val TICK_MS = 30_000L
         const val RECENT_MEDAL_DP = 48
+
+        private fun ranked(medal: Medal, stars: Int) = RankState.Ranked(medal, stars)
+        val SAMPLE_CHANGES = listOf(
+            Triple("star up, Guardian 3 → 4", ranked(Medal.GUARDIAN, 3), ranked(Medal.GUARDIAN, 4)),
+            Triple("star down, Guardian 4 → 3", ranked(Medal.GUARDIAN, 4), ranked(Medal.GUARDIAN, 3)),
+            Triple("tier up, Guardian 5 → Crusader 1", ranked(Medal.GUARDIAN, 5), ranked(Medal.CRUSADER, 1)),
+            Triple("tier down, Crusader 1 → Guardian 5", ranked(Medal.CRUSADER, 1), ranked(Medal.GUARDIAN, 5)),
+            Triple("calibrated, ? → Herald 2", RankState.Uncalibrated, ranked(Medal.HERALD, 2)),
+            Triple("Immortal, Divine 5 → #2488", ranked(Medal.DIVINE, 5), RankState.Immortal(2488)),
+            Triple("place roll, #2600 → #2488", RankState.Immortal(2600), RankState.Immortal(2488)),
+        )
     }
 }

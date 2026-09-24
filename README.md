@@ -15,6 +15,7 @@ A Glyph Toy for the **Nothing Phone (3)** that shows your Dota 2 rank on the Gly
 - **Rank changes** are animated: a new star fades in and blinks, a new medal gets a light wave and sparkles, a lost
   star fades out, a lower medal cross-fades, the Immortal place rolls to the new number. The app preview plays it in
   step with the Glyph. A change found while the toy wasn't on the Glyph plays the next time it is selected.
+  In debug builds, long-press the app preview to play sample rank changes (preview and Glyph).
 - **Errors** are only shown in the app. The Glyph (and the app preview) keep showing the last known medal.
 
 `rank_tier` decoding: tens digit = medal, ones digit = stars. Example: `24` → Guardian, 4 stars.

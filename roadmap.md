@@ -1,14 +1,6 @@
 # Roadmap
 
-Open items. Decisions from the second review on 2026-09-25; the suggested build order is at the end.
-
-## Quality of life
-
-### 1. Replay the rank-change animation (debug builds only)
-
-- Long-press the app preview to play the animations with sample ranks (star up, star down, tier up, tier down,
-  Immortal place roll), on the preview and the Glyph if the toy is showing.
-- Only in debug builds (`BuildConfig.DEBUG`, needs `buildFeatures.buildConfig = true`); not for end users.
+Open items only. Everything decided in the reviews on 2026-09-25 is built; see the git history and README.
 
 ## Device checks
 
@@ -20,7 +12,8 @@ Open items. Decisions from the second review on 2026-09-25; the suggested build 
 - **"App icon shows my medal" on the Nothing launcher:** the home screen shows the Guardian icon after the switch.
   Still to see whether a home-screen shortcut survives a later medal change.
 - **Home-screen widget:** pinned with *Add home-screen widget* (bound, refresh job scheduled, first run skipped
-  because the rank was fresh); its look on the home screen and the resize layouts are still to be checked.
+  because the rank was fresh); its look on the home screen and the resize layouts are still to be checked. The debug-build
+  animation replay (long-press the app preview) helps to check animations on the Glyph.
 - **Sharing reuses the open screen** (`singleTask`; checked with `adb`: a share goes to the open screen via
   `onNewIntent`). Still to try with a real share from the Steam app or Chrome: Back should return to that app.
 - **LED brightness is managed centrally** (verified in the Glyph service log): frame values reach the service
@@ -45,7 +38,3 @@ Decided against: an in-app Glyph brightness setting (the system manages it), a Q
 - Move user-facing texts from code into `strings.xml` (translations; the phone is set to German).
 - Split `MainActivity` (layout code, settings sections); it has grown a lot.
 - Remove leftovers: `DISABLE_SYSTEM_TIMEOUT`, the unused `!` glyph in `PixelFont`, and Glyph event logging in release builds.
-
-## Suggested build order
-
-1. QoL 1 (debug replay), whenever it helps with testing the widget or animations.
