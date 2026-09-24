@@ -4,19 +4,7 @@ Open items. Decisions from the second review on 2026-09-25; the suggested build 
 
 ## Fixes
 
-### 1. Tests for `RankRepository`
-
-The refresh rules (`RefreshPolicy`) are tested; the repository around them isn't.
-
-- Make it testable on the JVM: inject the background executor, a main-thread poster, the clock, the
-  `OpenDotaClient` (pointed at `MockHttpServer`) and the `SharedPreferences` (it is an interface; an in-memory fake
-  is enough). `ReloadShake` and `RankCelebration` get the same injectable poster instead of `Handler(Looper.getMainLooper())`.
-- Cases: a second caller joins the running request; the 5 s gap; a 429 blocks the next manual check; errors are
-  saved and cleared by the next success; a result for an account that was switched away mid-request is ignored;
-  a changed rank starts the animation, and is kept as pending when the toy isn't on the Glyph; the recent list and
-  the launcher icon are updated after a success.
-
-### 2. Reuse the open screen when sharing
+### 1. Reuse the open screen when sharing
 
 Sharing a profile to the app opens a second settings screen on top of the app it was shared from.
 
@@ -93,7 +81,6 @@ Decided against: an in-app Glyph brightness setting (the system manages it), a Q
 
 ## Suggested build order
 
-1. Fix 1 (repository tests), before more features build on the repository.
-2. Fix 2 (reuse the open screen) and QoL 1 (private-profile help): small.
-3. Feature 1 (home-screen widget).
-4. QoL 2 (debug replay), whenever it helps with testing the widget or animations.
+1. Fix 1 (reuse the open screen) and QoL 1 (private-profile help): small.
+2. Feature 1 (home-screen widget).
+3. QoL 2 (debug replay), whenever it helps with testing the widget or animations.

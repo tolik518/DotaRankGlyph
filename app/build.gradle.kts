@@ -27,6 +27,10 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+    testOptions {
+        // android.util.Log etc. return defaults in JVM tests instead of throwing "Stub!".
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {

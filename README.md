@@ -118,10 +118,12 @@ No AndroidX or Compose: the only dependency is the Glyph SDK, so the build stays
 
 ## Tests
 
-`./gradlew test` runs 102 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
+`./gradlew test` runs 115 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
 the OpenDota client and the Steam custom-URL lookup against a local mock server (captured player responses in `app/src/test/resources/opendota/`;
 404, minute/daily 429, rate-limit headers, 5xx, HTML/truncated bodies, timeouts, no connection, non-Latin names),
-the refresh policy (429 blocks until the UTC reset, low-quota pause, backoff, 5 s gap), shared-text parsing,
+the refresh policy (429 blocks until the UTC reset, low-quota pause, backoff, 5 s gap), the repository end to end
+(joined requests, errors, account switches mid-request, reload shake, rank-change animation and pending state,
+launcher icon; with a fake main thread in virtual time), shared-text parsing,
 the recent accounts list, the per-account rank cache (incl. migration from the old single cache), the rank-change animations (start/end frames, star fade and blink, one flash,
 place roll), the launcher icon aliases, auto refresh interval limits,
 matrix geometry, renderer checks (lit arcs = tier, one cross per star, nothing drawn outside the LED circle),

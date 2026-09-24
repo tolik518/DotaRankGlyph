@@ -1,7 +1,6 @@
 package com.glyphrank.dota.glyph
 
-import android.os.Handler
-import android.os.Looper
+import com.glyphrank.dota.util.MainThread
 
 /**
  * The reload shake, shared by the Glyph toy and the settings screen (same process): a reload
@@ -22,7 +21,7 @@ object ReloadShake {
     /** Safety net in case a reload never reports back (well past the 10 s network timeout). */
     private val MAX_STEPS = (30_000 / RankRenderer.SHAKE_FRAME_MS).toInt()
 
-    private val main = Handler(Looper.getMainLooper())
+    private val main = MainThread
     private val listeners = LinkedHashSet<Listener>()
     /** Tokens of the reloads in flight. Cleared by the safety stop, so a late [finish] is ignored. */
     private val reloads = HashSet<Int>()

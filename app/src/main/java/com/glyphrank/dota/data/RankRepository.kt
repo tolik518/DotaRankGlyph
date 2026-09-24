@@ -1,13 +1,16 @@
 package com.glyphrank.dota.data
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import com.glyphrank.dota.data.RefreshPolicy.Decision
+import com.glyphrank.dota.glyph.MedalArt
 import com.glyphrank.dota.glyph.RankAnimation
 import com.glyphrank.dota.glyph.RankCelebration
 import com.glyphrank.dota.glyph.ReloadShake
+import com.glyphrank.dota.rank.RankState
+import com.glyphrank.dota.util.MainThread
+import com.glyphrank.dota.util.Scheduler
+import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 
 /**
@@ -22,7 +25,16 @@ import java.util.concurrent.Executors
  *  - A changed rank plays [RankAnimation] via [RankCelebration]; if the toy isn't on the
  *    Glyph, the change is kept for [playPendingCelebration].
  */
-class RankRepository private constructor(private val context: Context) {
+class RankRepository internal constructor(
+    val store: RankStore,
+    private val client: OpenDotaClient,
+    private val io: Executor,
+    private val main: Scheduler,
+    private val clock: () -> Long,
+    private val medals: () -> MedalArt?,
+    /** Applies [LauncherIcon] for (current rank, "App icon shows my medal"). */
+    private val applyLauncherIcon: (RankState?, Boolean) -> Unit,
+) {
     interface Listener {
         /** A refresh saved a rank. [previous] is the last known rank of the same account, if any. */
         fun onRankSaved(previous: PlayerRank?, current: PlayerRank) {}
@@ -31,10 +43,6 @@ class RankRepository private constructor(private val context: Context) {
         fun onStateChanged() {}
     }
 
-    val store = RankStore(context)
-    private val client = OpenDotaClient()
-    private val main = Handler(Looper.getMainLooper())
-    private val io = Executors.newSingleThreadExecutor()
     private val listeners = LinkedHashSet<Listener>()
 
     /** Running requests by account ID; the value is the shake token, if the request shakes. */
@@ -73,7 +81,7 @@ class RankRepository private constructor(private val context: Context) {
             if (shake && inFlight[accountId] == null) inFlight[accountId] = ReloadShake.start()
             return Decision.Joined
         }
-        val now = System.currentTimeMillis()
+        val now = clock()
         val decision = RefreshPolicy.decide(
             accountId, manual, cached?.fetchedAtMs, store.refreshIntervalMinutes, store.guard, now,
         )
@@ -95,7 +103,7 @@ class RankRepository private constructor(private val context: Context) {
 
     private fun onFetched(accountId: Long, result: Result<PlayerFetch>) {
         val shakeToken = inFlight.remove(accountId)
-        val now = System.currentTimeMillis()
+        val now = clock()
         val current = store.accountId == accountId // otherwise the ID changed mid-request
         result
             .onSuccess { fetch ->
@@ -123,7 +131,7 @@ class RankRepository private constructor(private val context: Context) {
 
     /** Points the launcher icon at the current medal (or the default icon if the setting is off). */
     fun updateLauncherIcon() {
-        runCatching { LauncherIcon.update(context, store.cachedForCurrentAccount()?.player?.state, store.appIconShowsMedal) }
+        runCatching { applyLauncherIcon(store.cachedForCurrentAccount()?.player?.state, store.appIconShowsMedal) }
             .onFailure { Log.w(TAG, "Launcher icon update failed", it) }
     }
 
@@ -138,7 +146,7 @@ class RankRepository private constructor(private val context: Context) {
             val pending = store.pendingCelebration?.takeIf { it.accountId == current.accountId }
             if (pending == null) store.pendingCelebration = previous
         }
-        RankCelebration.play(animation.frames(previous.state, current.state, BundledMedals.load(context), show))
+        RankCelebration.play(animation.frames(previous.state, current.state, medals(), show))
     }
 
     /** Called by the toy when it appears: plays a change that happened while it was away. */
@@ -148,7 +156,7 @@ class RankRepository private constructor(private val context: Context) {
         val current = store.cachedForCurrentAccount()?.player ?: return
         if (pending.accountId != current.accountId) return
         RankCelebration.play(
-            animation.frames(pending.state, current.state, BundledMedals.load(context), store.showImmortalRank),
+            animation.frames(pending.state, current.state, medals(), store.showImmortalRank),
         )
     }
 
@@ -157,11 +165,21 @@ class RankRepository private constructor(private val context: Context) {
     companion object {
         private const val TAG = "RankRepository"
 
+        private fun create(app: Context) = RankRepository(
+            store = RankStore(app),
+            client = OpenDotaClient(),
+            io = Executors.newSingleThreadExecutor(),
+            main = MainThread,
+            clock = System::currentTimeMillis,
+            medals = { BundledMedals.load(app) },
+            applyLauncherIcon = { state, showMedal -> LauncherIcon.update(app, state, showMedal) },
+        )
+
         @Volatile private var instance: RankRepository? = null
 
         fun get(context: Context): RankRepository =
             instance ?: synchronized(this) {
-                instance ?: RankRepository(context.applicationContext).also { instance = it }
+                instance ?: create(context.applicationContext).also { instance = it }
             }
     }
 }

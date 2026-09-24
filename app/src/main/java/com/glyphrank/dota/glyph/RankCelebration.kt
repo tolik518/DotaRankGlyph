@@ -1,7 +1,6 @@
 package com.glyphrank.dota.glyph
 
-import android.os.Handler
-import android.os.Looper
+import com.glyphrank.dota.util.MainThread
 
 /**
  * Plays the rank-change animation ([RankAnimation]) on the Glyph toy and the settings
@@ -18,7 +17,7 @@ object RankCelebration {
         fun onCelebrationEnd()
     }
 
-    private val main = Handler(Looper.getMainLooper())
+    private val main = MainThread
     private val listeners = LinkedHashSet<Listener>()
     private val glyphListeners = HashSet<Listener>()
     private var frames: List<AnimationFrame> = emptyList()
@@ -74,7 +73,7 @@ object RankCelebration {
     /** Plays [animation], replacing one that is still running. Nothing happens for an empty list. */
     fun play(animation: List<AnimationFrame>) {
         if (animation.isEmpty()) return
-        main.removeCallbacks(step)
+        main.remove(step)
         frames = animation
         next = 0
         if (ReloadShake.isShaking) {
