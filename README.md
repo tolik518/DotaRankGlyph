@@ -39,6 +39,8 @@ In the app:
 - **Recent** lists the last 5 checked accounts with their last known medal: tap to switch, long-press to remove.
   Every recent account keeps its own cached rank, so switching shows its medal right away.
 - The status shows when the rank was last updated, and the last error in red if the latest check failed.
+- If OpenDota can't see a profile (or reports no rank), a help card explains how to turn on
+  *Expose Public Match Data* (Dota 2 → Settings → Social).
 - **App icon shows my medal** (off by default): the launcher icon becomes your current medal (Herald … Divine;
   Immortal and uncalibrated use the default Immortal icon). Android can't set arbitrary launcher icons, so the
   manifest has one launcher `activity-alias` per medal and `LauncherIcon` enables exactly one; it only switches
@@ -118,7 +120,7 @@ No AndroidX or Compose: the only dependency is the Glyph SDK, so the build stays
 
 ## Tests
 
-`./gradlew test` runs 115 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
+`./gradlew test` runs 116 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
 the OpenDota client and the Steam custom-URL lookup against a local mock server (captured player responses in `app/src/test/resources/opendota/`;
 404, minute/daily 429, rate-limit headers, 5xx, HTML/truncated bodies, timeouts, no connection, non-Latin names),
 the refresh policy (429 blocks until the UTC reset, low-quota pause, backoff, 5 s gap), the repository end to end

@@ -4,20 +4,7 @@ Open items. Decisions from the second review on 2026-09-25; the suggested build 
 
 ## Quality of life
 
-### 1. Help for private profiles
-
-When OpenDota has no public data for an account (`NOT_FOUND`: no profile, or "Expose Public Match Data" is off),
-show a help card instead of the one-line error:
-
-1. Open Dota 2 → Settings (gear icon) → Options → Social.
-2. Turn on **Expose Public Match Data**.
-3. Play a match (or wait until OpenDota refreshes the profile), then tap *Save & check rank* again.
-
-- Verify the exact menu path in the current Dota 2 client before shipping; a `?` link on the card can explain why
-  OpenDota needs it (the rank comes from public match data).
-- Hide the card after the next successful check.
-
-### 2. Replay the rank-change animation (debug builds only)
+### 1. Replay the rank-change animation (debug builds only)
 
 - Long-press the app preview to play the animations with sample ranks (star up, star down, tier up, tier down,
   Immortal place roll), on the preview and the Glyph if the toy is showing.
@@ -72,6 +59,5 @@ Decided against: an in-app Glyph brightness setting (the system manages it), a Q
 
 ## Suggested build order
 
-1. QoL 1 (private-profile help): small.
-2. Feature 1 (home-screen widget).
-3. QoL 2 (debug replay), whenever it helps with testing the widget or animations.
+1. Feature 1 (home-screen widget).
+2. QoL 1 (debug replay), whenever it helps with testing the widget or animations.

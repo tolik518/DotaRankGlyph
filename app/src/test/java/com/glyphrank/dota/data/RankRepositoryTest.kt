@@ -159,6 +159,18 @@ class RankRepositoryTest {
         assertNull(store.lastError)
     }
 
+    @Test fun `a private or unknown profile is saved as not found`() {
+        server.handler = { Response(200, """{"profile":null,"rank_tier":null}""") }
+        check()
+        finishRequests()
+        assertTrue(store.lastErrorForCurrentAccount()!!.isNotFound)
+        server.handler = { Response(503, "<html>503</html>", contentType = "text/html") }
+        now += 10_000
+        repo.refresh(manual = true)
+        finishRequests()
+        assertFalse(store.lastErrorForCurrentAccount()!!.isNotFound)
+    }
+
     @Test fun `a result for an account switched away mid-request is ignored`() {
         check(zeitboy)
         repo.setAccount(116233682)

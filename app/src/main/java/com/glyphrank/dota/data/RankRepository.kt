@@ -123,7 +123,7 @@ class RankRepository internal constructor(
             .onFailure { e ->
                 Log.w(TAG, "Rank refresh failed: ${e.message}")
                 store.guard = RefreshPolicy.afterFailure(store.guard, e, now)
-                if (current) store.saveError(accountId, e.message ?: "Lookup failed", now)
+                if (current) store.saveError(accountId, e.message ?: "Lookup failed", now, (e as? OpenDotaException)?.kind?.name)
             }
         shakeToken?.let(ReloadShake::finish) // the shake still finishes its cycle
         notifyState()

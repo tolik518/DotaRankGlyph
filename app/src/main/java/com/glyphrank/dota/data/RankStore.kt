@@ -47,7 +47,7 @@ class RankStore(val prefs: SharedPreferences) {
         val keep = recentAccounts.map { it.accountId }.toSet() + listOfNotNull(accountId, player.accountId)
         val cache = RankCache.prune(rankCache() + (player.accountId to RankCache.Entry(player, nowMs)), keep)
         prefs.edit()
-            .remove(KEY_ERROR).remove(KEY_ERROR_AT).remove(KEY_ERROR_ACCOUNT)
+            .remove(KEY_ERROR).remove(KEY_ERROR_AT).remove(KEY_ERROR_ACCOUNT).remove(KEY_ERROR_KIND)
             .putString(KEY_RANK_CACHE, RankCache.encode(cache))
             .apply()
     }
@@ -75,20 +75,33 @@ class RankStore(val prefs: SharedPreferences) {
     }
 
     /** Why the latest refresh failed; the Glyph never shows errors, so the app does. */
-    data class LastError(val accountId: Long, val message: String, val atMs: Long)
+    data class LastError(
+        val accountId: Long,
+        val message: String,
+        val atMs: Long,
+        /** [OpenDotaException.Kind] name, if it came from OpenDota. */
+        val kind: String? = null,
+    ) {
+        /** OpenDota has no public data for the account (private match data, or a wrong ID). */
+        val isNotFound: Boolean get() = kind == OpenDotaException.Kind.NOT_FOUND.name
+    }
 
     val lastError: LastError?
         get() {
             val message = prefs.getString(KEY_ERROR, null) ?: return null
-            return LastError(prefs.getLong(KEY_ERROR_ACCOUNT, 0L), message, prefs.getLong(KEY_ERROR_AT, 0L))
+            return LastError(
+                prefs.getLong(KEY_ERROR_ACCOUNT, 0L), message, prefs.getLong(KEY_ERROR_AT, 0L),
+                prefs.getString(KEY_ERROR_KIND, null),
+            )
         }
 
     /** The last error, if it belongs to the current account. */
     fun lastErrorForCurrentAccount(): LastError? = lastError?.takeIf { it.accountId == accountId }
 
-    fun saveError(accountId: Long, message: String, nowMs: Long = System.currentTimeMillis()) {
+    fun saveError(accountId: Long, message: String, nowMs: Long = System.currentTimeMillis(), kind: String? = null) {
         prefs.edit()
             .putString(KEY_ERROR, message)
+            .putString(KEY_ERROR_KIND, kind)
             .putLong(KEY_ERROR_AT, nowMs)
             .putLong(KEY_ERROR_ACCOUNT, accountId)
             .apply()
@@ -177,6 +190,7 @@ class RankStore(val prefs: SharedPreferences) {
         private const val KEY_ERROR = "last_error"
         private const val KEY_ERROR_AT = "last_error_at"
         private const val KEY_ERROR_ACCOUNT = "last_error_account_id"
+        private const val KEY_ERROR_KIND = "last_error_kind"
         private const val KEY_GUARD_BLOCKED_UNTIL = "guard_blocked_until"
         private const val KEY_GUARD_BLOCKED_DAILY = "guard_blocked_daily"
         private const val KEY_GUARD_PAUSED_UNTIL = "guard_paused_until"

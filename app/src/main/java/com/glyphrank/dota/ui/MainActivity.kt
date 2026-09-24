@@ -40,6 +40,7 @@ import com.glyphrank.dota.glyph.RankCelebration
 import com.glyphrank.dota.glyph.RankRenderer
 import com.glyphrank.dota.glyph.ReloadShake
 import com.glyphrank.dota.rank.PlayerInput
+import com.glyphrank.dota.rank.RankState
 import com.glyphrank.dota.rank.RankTier
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -102,6 +103,8 @@ class MainActivity : Activity() {
     private lateinit var recentSection: LinearLayout
     private lateinit var recentList: LinearLayout
     private lateinit var toyPrompt: LinearLayout
+    private lateinit var privateHelp: LinearLayout
+    private lateinit var privateHelpTitle: TextView
     private lateinit var notice: TextView
     private lateinit var status: TextView
     private lateinit var preview: MatrixPreviewView
@@ -256,9 +259,26 @@ class MainActivity : Activity() {
         if (!RankCelebration.isBusy) preview.frame = glyphFrame()
         status.text = statusText()
         renderRecent()
+        renderPrivateHelp()
         toyPrompt.visibility =
             if (store.cachedForCurrentAccount() != null && !store.toyUsed && !store.toyPromptDone) View.VISIBLE
             else View.GONE
+    }
+
+    /**
+     * How to turn on "Expose Public Match Data": shown when OpenDota has no public profile for
+     * the account, or reports no rank (private match data can hide it too).
+     */
+    private fun renderPrivateHelp() {
+        val cached = store.cachedForCurrentAccount()
+        val error = store.lastErrorForCurrentAccount()?.takeIf { cached == null || it.atMs >= cached.fetchedAtMs }
+        privateHelpTitle.text = when {
+            error?.isNotFound == true -> "OpenDota can't see this profile. If the ID is right, its match data is private:"
+            cached?.player?.state == RankState.Uncalibrated && error == null ->
+                "No rank on OpenDota? If you are calibrated, your match data may be private:"
+            else -> null
+        }
+        privateHelp.visibility = if (privateHelpTitle.text.isNullOrEmpty()) View.GONE else View.VISIBLE
     }
 
     /** Recent accounts other than the current one, with their last known medal; tap to switch, long-press to remove. */
@@ -452,6 +472,25 @@ class MainActivity : Activity() {
 
         status = text("", 16f, TEXT)
         column.addView(status, spaced(top = 16, bottom = 16))
+
+        privateHelp = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setBackgroundColor(Color.rgb(0x1C, 0x1C, 0x1C))
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            privateHelpTitle = text("", 14f, TEXT)
+            addView(privateHelpTitle)
+            addView(text(
+                "1. Start Dota 2 and open Settings (top left).\n" +
+                    "2. Go to the Social tab.\n" +
+                    "3. Turn on \"Expose Public Match Data\".\n" +
+                    "4. Play a match. OpenDota only sees matches played after the switch is on, " +
+                    "a few minutes after each match ends.\n" +
+                    "5. Then tap Save & check rank again.",
+                14f, MUTED,
+            ), spaced(top = 8))
+        }
+        column.addView(privateHelp, spaced(bottom = 16))
 
         toyPrompt = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
