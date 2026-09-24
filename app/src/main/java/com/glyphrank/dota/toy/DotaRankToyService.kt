@@ -10,6 +10,7 @@ import com.glyphrank.dota.data.RankRepository
 import com.glyphrank.dota.data.RankStore
 import com.glyphrank.dota.data.RefreshPolicy.Decision
 import com.glyphrank.dota.glyph.MedalArt
+import com.glyphrank.dota.glyph.RankCelebration
 import com.glyphrank.dota.glyph.RankRenderer
 import com.glyphrank.dota.glyph.ReloadShake
 import com.nothing.ketchum.GlyphMatrixManager
@@ -21,6 +22,8 @@ import com.nothing.ketchum.GlyphMatrixManager
  *  - Long-press: forces a refresh; the last known rank shakes while loading (at least one
  *                full shake, in step with the app via [ReloadShake]), or the ring spinner
  *                runs if there is no rank yet. Reloads from the app shake the Glyph too.
+ *  - Rank change: plays [com.glyphrank.dota.glyph.RankAnimation], also for changes that
+ *                happened while the toy wasn't on the Glyph.
  *  - Errors:     never shown on the Glyph; the last known medal stays. The app shows them.
  *  - AOD:        re-renders on every system tick (~1/min); fetches only when the cache is stale.
  *  - Fetching:   all requests go through [RankRepository] (rate limits, one request at a time).
@@ -48,6 +51,7 @@ class DotaRankToyService : GlyphMatrixService("DotaRankToy") {
     /** Follows the shared reload shake, whether the reload started here or in the app. */
     private val shakeListener = object : ReloadShake.Listener {
         override fun onShakeStep(step: Int) {
+            if (RankCelebration.isPlaying) return
             val base = shakeBase ?: cachedMedal() ?: return
             shakeBase = base
             showFrame(renderer.shake(base, step))
@@ -57,6 +61,12 @@ class DotaRankToyService : GlyphMatrixService("DotaRankToy") {
             shakeBase = null
             showCurrent()
         }
+    }
+
+    private val celebrationListener = object : RankCelebration.Listener {
+        override fun onCelebrationFrame(frame: IntArray) = showFrame(frame)
+
+        override fun onCelebrationEnd() = showCurrent()
     }
 
     private val repositoryListener = object : RankRepository.Listener {
@@ -93,6 +103,8 @@ class DotaRankToyService : GlyphMatrixService("DotaRankToy") {
         repo.store.prefs.registerOnSharedPreferenceChangeListener(prefsListener)
         repo.addListener(repositoryListener)
         ReloadShake.addListener(shakeListener)
+        RankCelebration.addListener(celebrationListener, glyph = true)
+        repo.playPendingCelebration() // before showCurrent, so the new rank isn't shown first
         showCurrent()
         repo.refresh(manual = false)
     }
@@ -104,6 +116,7 @@ class DotaRankToyService : GlyphMatrixService("DotaRankToy") {
         }
         repository = null
         ReloadShake.removeListener(shakeListener)
+        RankCelebration.removeListener(celebrationListener)
         shakeBase = null
         main.removeCallbacksAndMessages(null)
     }
@@ -123,7 +136,8 @@ class DotaRankToyService : GlyphMatrixService("DotaRankToy") {
     }
 
     private fun showCurrent() {
-        if (ReloadShake.isShaking || main.hasCallbacks(spinner)) return // an animation owns the matrix
+        // An animation owns the matrix.
+        if (ReloadShake.isShaking || RankCelebration.isBusy || main.hasCallbacks(spinner)) return
         showFrame(currentFrame())
     }
 

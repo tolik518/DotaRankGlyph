@@ -95,6 +95,32 @@ class RankStore(context: Context) {
         get() = prefs.getBoolean(KEY_TOY_PROMPT_DONE, false)
         set(value) = prefs.edit().putBoolean(KEY_TOY_PROMPT_DONE, value).apply()
 
+    /**
+     * The rank before a change that the Glyph hasn't animated yet (the toy wasn't on the
+     * matrix). Kept until the toy plays it; later changes keep the oldest "before".
+     */
+    var pendingCelebration: PlayerRank?
+        get() {
+            val account = prefs.getLong(KEY_PENDING_ACCOUNT, 0L).takeIf { it > 0 } ?: return null
+            return PlayerRank(
+                accountId = account,
+                personaName = null,
+                rankTier = prefs.getInt(KEY_PENDING_TIER, NONE).takeIf { it != NONE },
+                leaderboardRank = prefs.getInt(KEY_PENDING_LEADERBOARD, NONE).takeIf { it != NONE },
+            )
+        }
+        set(value) {
+            val editor = prefs.edit()
+            if (value == null) {
+                editor.remove(KEY_PENDING_ACCOUNT).remove(KEY_PENDING_TIER).remove(KEY_PENDING_LEADERBOARD)
+            } else {
+                editor.putLong(KEY_PENDING_ACCOUNT, value.accountId)
+                    .putInt(KEY_PENDING_TIER, value.rankTier ?: NONE)
+                    .putInt(KEY_PENDING_LEADERBOARD, value.leaderboardRank ?: NONE)
+            }
+            editor.apply()
+        }
+
     /** See [RefreshPolicy]. */
     var guard: GuardState
         get() = GuardState(
@@ -129,6 +155,9 @@ class RankStore(context: Context) {
         const val KEY_RECENT = "recent_accounts"
         const val KEY_TOY_USED = "toy_used"
         const val KEY_TOY_PROMPT_DONE = "toy_prompt_done"
+        private const val KEY_PENDING_ACCOUNT = "pending_celebration_account_id"
+        private const val KEY_PENDING_TIER = "pending_celebration_rank_tier"
+        private const val KEY_PENDING_LEADERBOARD = "pending_celebration_leaderboard_rank"
         private const val KEY_ERROR = "last_error"
         private const val KEY_ERROR_AT = "last_error_at"
         private const val KEY_ERROR_ACCOUNT = "last_error_account_id"
@@ -142,6 +171,7 @@ class RankStore(context: Context) {
 
         /** Bookkeeping keys that don't change what the Glyph shows. */
         fun isBookkeeping(key: String?) = key != null &&
-            (key.startsWith("guard_") || key.startsWith("last_error") || key == KEY_RECENT || key.startsWith("toy_"))
+            (key.startsWith("guard_") || key.startsWith("last_error") || key == KEY_RECENT ||
+                key.startsWith("toy_") || key.startsWith("pending_"))
     }
 }

@@ -36,6 +36,7 @@ import com.glyphrank.dota.data.RefreshInterval
 import com.glyphrank.dota.data.RefreshPolicy.Decision
 import com.glyphrank.dota.data.SteamProfileResolver
 import com.glyphrank.dota.glyph.MedalArt
+import com.glyphrank.dota.glyph.RankCelebration
 import com.glyphrank.dota.glyph.RankRenderer
 import com.glyphrank.dota.glyph.ReloadShake
 import com.glyphrank.dota.rank.PlayerInput
@@ -59,6 +60,7 @@ class MainActivity : Activity() {
     /** Follows the shared reload shake, whether the reload started here or on the Glyph. */
     private val shakeListener = object : ReloadShake.Listener {
         override fun onShakeStep(step: Int) {
+            if (RankCelebration.isPlaying) return
             val base = shakeBase ?: glyphFrame().also { shakeBase = it }
             preview.frame = renderer.shake(base, step)
         }
@@ -67,6 +69,15 @@ class MainActivity : Activity() {
             shakeBase = null
             render()
         }
+    }
+
+    /** The rank-change animation, in step with the Glyph. */
+    private val celebrationListener = object : RankCelebration.Listener {
+        override fun onCelebrationFrame(frame: IntArray) {
+            preview.frame = frame
+        }
+
+        override fun onCelebrationEnd() = render()
     }
 
     /** Refreshes started here or by the toy, errors, account changes. */
@@ -116,12 +127,14 @@ class MainActivity : Activity() {
     override fun onStart() {
         super.onStart()
         ReloadShake.addListener(shakeListener)
+        RankCelebration.addListener(celebrationListener)
         repository.addListener(repositoryListener)
         ticker.run()
     }
 
     override fun onStop() {
         ReloadShake.removeListener(shakeListener)
+        RankCelebration.removeListener(celebrationListener)
         repository.removeListener(repositoryListener)
         status.removeCallbacks(ticker)
         shakeBase = null
@@ -238,7 +251,7 @@ class MainActivity : Activity() {
     private fun render() {
         updateCheckButton()
         if (ReloadShake.isShaking) return // results appear once the shake has finished its cycle
-        preview.frame = glyphFrame()
+        if (!RankCelebration.isBusy) preview.frame = glyphFrame()
         status.text = statusText()
         renderRecent()
         toyPrompt.visibility =

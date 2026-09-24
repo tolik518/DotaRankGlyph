@@ -27,7 +27,19 @@ class RankRenderer(
      * on the top edge, the Immortal leaderboard place on a plate in the lower part if
      * [showImmortalRank]); medals without art, and status screens, use the built-in emblem.
      */
-    fun render(state: RankState, medals: MedalArt?, showImmortalRank: Boolean = true): IntArray {
+    fun render(state: RankState, medals: MedalArt?, showImmortalRank: Boolean = true): IntArray =
+        render(state, medals, showImmortalRank, pipValue = null)
+
+    /**
+     * Like [render], with the brightness of each star pip (0 = leftmost) from [pipValue];
+     * used by [RankAnimation] to fade single stars in and out.
+     */
+    internal fun render(
+        state: RankState,
+        medals: MedalArt?,
+        showImmortalRank: Boolean,
+        pipValue: ((index: Int) -> Int)?,
+    ): IntArray {
         val art = when (state) {
             is RankState.Ranked -> medals?.frameFor(state.medal)
             is RankState.Immortal -> medals?.frameFor(Medal.IMMORTAL)
@@ -36,7 +48,7 @@ class RankRenderer(
         return MatrixCanvas().apply {
             art.copyInto(pixels)
             when (state) {
-                is RankState.Ranked -> drawStarPips(state.stars)
+                is RankState.Ranked -> drawStarPips(state.stars, pipValue ?: { full })
                 is RankState.Immortal -> if (showImmortalRank) state.leaderboardRank?.let { drawRankPlate(it) }
                 RankState.Uncalibrated -> Unit
             }
@@ -125,7 +137,7 @@ class RankRenderer(
      * Earned stars as single bright LEDs on a dark band cut into the top edge of the art,
      * so they read cleanly over any art.
      */
-    private fun MatrixCanvas.drawStarPips(stars: Int) {
+    private fun MatrixCanvas.drawStarPips(stars: Int, pipValue: (index: Int) -> Int) {
         if (stars <= 0) return
         val spacing = if (stars > RankTier.CURRENT_STAR_SLOTS) PIP_SPACING_DENSE_DEG else PIP_SPACING_DEG
         val halfSpan = (stars - 1) / 2.0 * spacing
@@ -137,7 +149,7 @@ class RankRenderer(
             val theta = Math.toRadians((i - (stars - 1) / 2.0) * spacing)
             val px = (MatrixLayout.CENTER + PIP_RADIUS * sin(theta)).roundToInt()
             val py = (MatrixLayout.CENTER - PIP_RADIUS * cos(theta)).roundToInt()
-            this[px, py] = full
+            this[px, py] = pipValue(i)
         }
     }
 
