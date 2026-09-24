@@ -2,17 +2,6 @@
 
 Open items. Decisions from the second review on 2026-09-25; the suggested build order is at the end.
 
-## Fixes
-
-### 1. Reuse the open screen when sharing
-
-Sharing a profile to the app opens a second settings screen on top of the app it was shared from.
-
-- Make `MainActivity` `singleTask` (the share alias inherits it), so a share brings the existing screen forward and
-  arrives in `onNewIntent` (already handled there).
-- Check on the device: Back after a share returns to the sharing app; the Glyph Toys manager's "introduction" link
-  and the launcher aliases still open the same screen.
-
 ## Quality of life
 
 ### 1. Help for private profiles
@@ -56,6 +45,8 @@ show a help card instead of the one-line error:
   connection), but never provoked on the device.
 - **"App icon shows my medal" on the Nothing launcher:** the alias switch works (checked with `adb`); still to see
   whether the launcher refreshes the icon promptly and whether a home-screen shortcut survives the switch.
+- **Sharing reuses the open screen** (`singleTask`; checked with `adb`: a share goes to the open screen via
+  `onNewIntent`). Still to try with a real share from the Steam app or Chrome: Back should return to that app.
 - **LED brightness is managed centrally** (verified in the Glyph service log): frame values reach the service
   unchanged (0–4095), and the service applies the system Glyph brightness on top (`setLightFrame … brightness:200`,
   from the global setting `led_brightness_value`). Our values are relative levels; no brightness setting in the app.
@@ -81,6 +72,6 @@ Decided against: an in-app Glyph brightness setting (the system manages it), a Q
 
 ## Suggested build order
 
-1. Fix 1 (reuse the open screen) and QoL 1 (private-profile help): small.
+1. QoL 1 (private-profile help): small.
 2. Feature 1 (home-screen widget).
 3. QoL 2 (debug replay), whenever it helps with testing the widget or animations.

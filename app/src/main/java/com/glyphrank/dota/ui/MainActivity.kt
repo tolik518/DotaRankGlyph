@@ -119,8 +119,10 @@ class MainActivity : Activity() {
         if (savedInstanceState == null) handleShare(intent)
     }
 
+    /** singleTask: a share (or any launch) while the screen exists arrives here instead of a second screen. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         handleShare(intent)
     }
 
