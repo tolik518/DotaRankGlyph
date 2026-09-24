@@ -39,6 +39,9 @@ In the app:
 - **Recent** lists the last 5 checked accounts with their last known medal: tap to switch, long-press to remove.
   Every recent account keeps its own cached rank, so switching shows its medal right away.
 - The status shows when the rank was last updated, and the last error in red if the latest check failed.
+- **Home-screen widget** (*Add home-screen widget*, or the launcher's widget list): the medal as Glyph Matrix dots;
+  wider sizes add name, rank and update time. Tap opens the app. While a widget exists, a `JobScheduler` job refreshes
+  the rank at the Auto refresh interval (min. 15 min) through the same repository and rate-limit rules.
 - If OpenDota can't see a profile (or reports no rank), a help card explains how to turn on
   *Expose Public Match Data* (Dota 2 → Settings → Social).
 - **App icon shows my medal** (off by default): the launcher icon becomes your current medal (Herald … Divine;
@@ -108,6 +111,7 @@ The state is stored with the settings, so it survives restarts.
 | `data/RankCache.kt` | Cached rank per account (JSON in the settings) |
 | `data/RefreshInterval.kt` | Auto refresh interval limits (5 min … once a day) |
 | `glyph/` | Matrix geometry, 3×5 font, medal renderer, medal art parser, shared reload shake, rank-change animation |
+| `widget/` | Home-screen widget and its background refresh job |
 | `data/LauncherIcon.kt` | Switches the launcher alias for "App icon shows my medal" |
 | `tools/make_icons.py` | Generates the launcher icons from the medal art |
 | `app/src/main/assets/dota_rank_medals.json` | Bundled grayscale medal images used by default |
@@ -120,7 +124,7 @@ No AndroidX or Compose: the only dependency is the Glyph SDK, so the build stays
 
 ## Tests
 
-`./gradlew test` runs 116 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
+`./gradlew test` runs 117 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
 the OpenDota client and the Steam custom-URL lookup against a local mock server (captured player responses in `app/src/test/resources/opendota/`;
 404, minute/daily 429, rate-limit headers, 5xx, HTML/truncated bodies, timeouts, no connection, non-Latin names),
 the refresh policy (429 blocks until the UTC reset, low-quota pause, backoff, 5 s gap), the repository end to end

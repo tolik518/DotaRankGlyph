@@ -1,6 +1,7 @@
 package com.glyphrank.dota.ui
 
 import android.app.Activity
+import android.appwidget.AppWidgetManager
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.ClipboardManager
@@ -42,6 +43,8 @@ import com.glyphrank.dota.glyph.ReloadShake
 import com.glyphrank.dota.rank.PlayerInput
 import com.glyphrank.dota.rank.RankState
 import com.glyphrank.dota.rank.RankTier
+import com.glyphrank.dota.widget.RankRefreshJob
+import com.glyphrank.dota.widget.RankWidget
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -386,6 +389,7 @@ class MainActivity : Activity() {
         intervalPicker.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 store.refreshIntervalMinutes = choices[position]
+                RankRefreshJob.reschedule(this@MainActivity)
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) {}
@@ -406,6 +410,16 @@ class MainActivity : Activity() {
             if (value) PackageManager.COMPONENT_ENABLED_STATE_DEFAULT else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
             PackageManager.DONT_KILL_APP,
         )
+
+    /** Asks the launcher to place the widget (it shows its own confirmation). */
+    private fun pinWidget() {
+        val manager = getSystemService(AppWidgetManager::class.java)
+        val pinned = manager != null && manager.isRequestPinAppWidgetSupported &&
+            manager.requestPinAppWidget(ComponentName(this, RankWidget::class.java), null, null)
+        if (!pinned) {
+            Toast.makeText(this, "Long-press the home screen → Widgets → Dota Rank Glyph", Toast.LENGTH_LONG).show()
+        }
+    }
 
     private fun openToyManager() {
         val intent = Intent().setComponent(
@@ -551,6 +565,7 @@ class MainActivity : Activity() {
             isChecked = store.showImmortalRank
             setOnCheckedChangeListener { _, checked ->
                 store.showImmortalRank = checked
+                repository.refreshWidgets()
                 render()
             }
         }, spaced(top = 8))
@@ -591,6 +606,11 @@ class MainActivity : Activity() {
             text = "Add to Glyph Toys"
             setOnClickListener { openToyManager() }
         }, spaced(top = 16))
+
+        column.addView(Button(this).apply {
+            text = "Add home-screen widget"
+            setOnClickListener { pinWidget() }
+        }, spaced(top = 8))
 
         column.addView(text(
             "Short-press the Glyph Button to reach the toy, long-press it to refresh. " +

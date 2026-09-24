@@ -10,6 +10,7 @@ import com.glyphrank.dota.glyph.ReloadShake
 import com.glyphrank.dota.rank.RankState
 import com.glyphrank.dota.util.MainThread
 import com.glyphrank.dota.util.Scheduler
+import com.glyphrank.dota.widget.RankWidget
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 
@@ -34,6 +35,8 @@ class RankRepository internal constructor(
     private val medals: () -> MedalArt?,
     /** Applies [LauncherIcon] for (current rank, "App icon shows my medal"). */
     private val applyLauncherIcon: (RankState?, Boolean) -> Unit,
+    /** Redraws the home-screen widgets from the store. */
+    private val updateWidgets: () -> Unit = {},
 ) {
     interface Listener {
         /** A refresh saved a rank. [previous] is the last known rank of the same account, if any. */
@@ -65,6 +68,7 @@ class RankRepository internal constructor(
         store.accountId = accountId
         store.guard = store.guard.copy(failures = 0) // the backoff was for the old account
         if (store.appIconShowsMedal) updateLauncherIcon() // its cached medal, if any
+        refreshWidgets()
         notifyState()
     }
 
@@ -126,6 +130,7 @@ class RankRepository internal constructor(
                 if (current) store.saveError(accountId, e.message ?: "Lookup failed", now, (e as? OpenDotaException)?.kind?.name)
             }
         shakeToken?.let(ReloadShake::finish) // the shake still finishes its cycle
+        if (current) refreshWidgets()
         notifyState()
     }
 
@@ -133,6 +138,11 @@ class RankRepository internal constructor(
     fun updateLauncherIcon() {
         runCatching { applyLauncherIcon(store.cachedForCurrentAccount()?.player?.state, store.appIconShowsMedal) }
             .onFailure { Log.w(TAG, "Launcher icon update failed", it) }
+    }
+
+    /** Redraws the home-screen widgets, e.g. after a display setting changed. */
+    fun refreshWidgets() {
+        runCatching(updateWidgets).onFailure { Log.w(TAG, "Widget update failed", it) }
     }
 
     private val animation = RankAnimation()
@@ -173,6 +183,7 @@ class RankRepository internal constructor(
             clock = System::currentTimeMillis,
             medals = { BundledMedals.load(app) },
             applyLauncherIcon = { state, showMedal -> LauncherIcon.update(app, state, showMedal) },
+            updateWidgets = { RankWidget.updateAll(app) },
         )
 
         @Volatile private var instance: RankRepository? = null

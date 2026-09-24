@@ -10,19 +10,6 @@ Open items. Decisions from the second review on 2026-09-25; the suggested build 
   Immortal place roll), on the preview and the Glyph if the toy is showing.
 - Only in debug builds (`BuildConfig.DEBUG`, needs `buildFeatures.buildConfig = true`); not for end users.
 
-## Features
-
-### 1. Home-screen widget (must)
-
-- The current medal (with stars / Immortal place) in the Glyph Matrix dot style, plus "Updated X ago".
-- Tap opens the app. Resizable, at least 1×1 (medal only) and 2×2 (medal + name + rank + age).
-- Plain `AppWidgetProvider` + `RemoteViews` with the medal drawn into a bitmap, so no extra libraries.
-- Updated by `RankRepository` whenever it saves a rank (from the app or the toy).
-- Refreshing on its own while widgets exist: a `JobScheduler` job at the Auto refresh interval (min. 15 min), with
-  network required, going through `RankRepository` so the rate-limit rules apply. The toy and the widget share the
-  same cache, so they never both fetch.
-- No animations on the widget; the Glyph and the app preview keep those.
-
 ## Device checks
 
 - **Always-on (AOD) toy: not tested yet, not a priority.** When tested: pick Dota Rank as the Always-on Glyph Toy,
@@ -30,8 +17,10 @@ Open items. Decisions from the second review on 2026-09-25; the suggested build 
   unless the rank is stale.
 - **Glyph service reconnect:** handled in `GlyphMatrixService` (one disconnect per connect, no frames to a dead
   connection), but never provoked on the device.
-- **"App icon shows my medal" on the Nothing launcher:** the alias switch works (checked with `adb`); still to see
-  whether the launcher refreshes the icon promptly and whether a home-screen shortcut survives the switch.
+- **"App icon shows my medal" on the Nothing launcher:** the home screen shows the Guardian icon after the switch.
+  Still to see whether a home-screen shortcut survives a later medal change.
+- **Home-screen widget:** pinned with *Add home-screen widget* (bound, refresh job scheduled, first run skipped
+  because the rank was fresh); its look on the home screen and the resize layouts are still to be checked.
 - **Sharing reuses the open screen** (`singleTask`; checked with `adb`: a share goes to the open screen via
   `onNewIntent`). Still to try with a real share from the Steam app or Chrome: Back should return to that app.
 - **LED brightness is managed centrally** (verified in the Glyph service log): frame values reach the service
@@ -59,5 +48,4 @@ Decided against: an in-app Glyph brightness setting (the system manages it), a Q
 
 ## Suggested build order
 
-1. Feature 1 (home-screen widget).
-2. QoL 1 (debug replay), whenever it helps with testing the widget or animations.
+1. QoL 1 (debug replay), whenever it helps with testing the widget or animations.

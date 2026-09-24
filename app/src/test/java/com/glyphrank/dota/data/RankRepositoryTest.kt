@@ -27,6 +27,7 @@ class RankRepositoryTest {
     private val io = Executor { ioQueue += it }
     private var now = 1_790_344_800_000L // 2026-09-25 14:00 UTC
     private val launcherIcons = mutableListOf<Pair<RankState?, Boolean>>()
+    private var widgetUpdates = 0
     private val store = RankStore(FakeSharedPreferences())
     private val repo = RankRepository(
         store = store,
@@ -36,6 +37,7 @@ class RankRepositoryTest {
         clock = { now },
         medals = { null },
         applyLauncherIcon = { state, show -> launcherIcons += state to show },
+        updateWidgets = { widgetUpdates++ },
     )
 
     private val zeitboy = 40453096L
@@ -239,6 +241,18 @@ class RankRepositoryTest {
         main.advanceBy(10_000)
         assertTrue(celebrationFrames.isEmpty())
         assertNull(store.pendingCelebration)
+    }
+
+    @Test fun `widgets are redrawn after a switch and after every result`() {
+        check()
+        assertEquals(1, widgetUpdates) // switched to the account
+        finishRequests()
+        assertEquals(2, widgetUpdates) // rank saved
+        server.handler = { Response(503, "", contentType = "text/html") }
+        now += 10_000
+        repo.refresh(manual = true)
+        finishRequests()
+        assertEquals(3, widgetUpdates) // error saved (the widget keeps the last rank)
     }
 
     @Test fun `the launcher icon follows the medal only with the setting on`() {

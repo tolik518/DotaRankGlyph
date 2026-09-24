@@ -6,6 +6,10 @@
     <uses-permission android:name="com.nothing.ketchum.permission.ENABLE" />
     <!-- OpenDota API -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Keeps the widget's background refresh (a persisted JobScheduler job) after a reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Required for a job that waits for a network connection -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:allowBackup="true"
@@ -127,6 +131,23 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity-alias>
+
+        <!-- Home-screen widget -->
+        <receiver
+            android:name=".widget.RankWidget"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/rank_widget_info" />
+        </receiver>
+
+        <service
+            android:name=".widget.RankRefreshJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
         <!-- The Glyph Toy -->
         <service
