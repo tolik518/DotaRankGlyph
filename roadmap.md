@@ -4,21 +4,7 @@ Open items. Decisions from the second review on 2026-09-25; the suggested build 
 
 ## Fixes
 
-### 1. Cached rank per account
-
-Today switching accounts deletes the saved rank (`RankStore.accountId`'s setter removes `fetched_at`). Switching back
-to a recent account shows the loading ring until the check finishes, and a rank change on that account can't be
-animated because the "before" is gone.
-
-- Keep the last rank and its fetch time for every account in the recent list (at most 5 + the current one), e.g. one
-  JSON entry per account; drop entries that leave the recent list.
-- Switching shows the account's last known medal right away; the check then refreshes it like any other refresh,
-  so rank changes animate across switches too.
-- Migrate the current single cache into the new format once.
-- The last error stays per current account (as now).
-- Needed by QoL 1 (medal images in the recent list).
-
-### 2. Tests for `RankRepository`
+### 1. Tests for `RankRepository`
 
 The refresh rules (`RefreshPolicy`) are tested; the repository around them isn't.
 
@@ -30,7 +16,7 @@ The refresh rules (`RefreshPolicy`) are tested; the repository around them isn't
   a changed rank starts the animation, and is kept as pending when the toy isn't on the Glyph; the recent list and
   the launcher icon are updated after a success.
 
-### 3. Reuse the open screen when sharing
+### 2. Reuse the open screen when sharing
 
 Sharing a profile to the app opens a second settings screen on top of the app it was shared from.
 
@@ -41,13 +27,7 @@ Sharing a profile to the app opens a second settings screen on top of the app it
 
 ## Quality of life
 
-### 1. Medal images in the recent list
-
-- A small medal image (about 25–50 dp) on the left of every recent account, drawn from the account's cached rank
-  (fix 1) with the same renderer as the preview, stars included.
-- No cached rank yet: the dim ring.
-
-### 2. Help for private profiles
+### 1. Help for private profiles
 
 When OpenDota has no public data for an account (`NOT_FOUND`: no profile, or "Expose Public Match Data" is off),
 show a help card instead of the one-line error:
@@ -60,7 +40,7 @@ show a help card instead of the one-line error:
   OpenDota needs it (the rank comes from public match data).
 - Hide the card after the next successful check.
 
-### 3. Replay the rank-change animation (debug builds only)
+### 2. Replay the rank-change animation (debug builds only)
 
 - Long-press the app preview to play the animations with sample ranks (star up, star down, tier up, tier down,
   Immortal place roll), on the preview and the Glyph if the toy is showing.
@@ -113,8 +93,7 @@ Decided against: an in-app Glyph brightness setting (the system manages it), a Q
 
 ## Suggested build order
 
-1. Fix 1 (per-account cache), then QoL 1 (medal images in the recent list), which needs it.
-2. Fix 2 (repository tests), before more features build on the repository.
-3. Fix 3 (reuse the open screen) and QoL 2 (private-profile help): small.
-4. Feature 1 (home-screen widget).
-5. QoL 3 (debug replay), whenever it helps with testing the widget or animations.
+1. Fix 1 (repository tests), before more features build on the repository.
+2. Fix 2 (reuse the open screen) and QoL 1 (private-profile help): small.
+3. Feature 1 (home-screen widget).
+4. QoL 2 (debug replay), whenever it helps with testing the widget or animations.

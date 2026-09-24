@@ -259,16 +259,32 @@ class MainActivity : Activity() {
             else View.GONE
     }
 
-    /** Recent accounts other than the current one; tap to switch, long-press to remove. */
+    /** Recent accounts other than the current one, with their last known medal; tap to switch, long-press to remove. */
     private fun renderRecent() {
         val others = store.recentAccounts.filter { it.accountId != store.accountId }
         recentSection.visibility = if (others.isEmpty()) View.GONE else View.VISIBLE
         recentList.removeAllViews()
         for (entry in others) {
-            recentList.addView(text("${entry.name ?: "Player"}  ·  ${entry.accountId}", 15f, TEXT).apply {
-                setPadding(0, dp(10), 0, dp(10))
-                isSingleLine = true
-                ellipsize = TextUtils.TruncateAt.END
+            val cached = store.cachedFor(entry.accountId)
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(6), 0, dp(6))
+                addView(MatrixPreviewView(this@MainActivity).apply {
+                    frame = cached?.let { renderer.render(it.player.state, medals, store.showImmortalRank) }
+                        ?: renderer.message("")
+                }, LinearLayout.LayoutParams(dp(RECENT_MEDAL_DP), dp(RECENT_MEDAL_DP)))
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(text(entry.name ?: "Player", 15f, TEXT).apply {
+                        isSingleLine = true
+                        ellipsize = TextUtils.TruncateAt.END
+                    })
+                    val rank = cached?.let { RankTier.describe(it.player.state) + "  ·  " } ?: ""
+                    addView(text("$rank${entry.accountId}", 13f, MUTED).apply { isSingleLine = true })
+                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = dp(12)
+                })
                 setOnClickListener {
                     if (!checkButton.isEnabled) return@setOnClickListener
                     input.setText(entry.accountId.toString())
@@ -279,7 +295,8 @@ class MainActivity : Activity() {
                     renderRecent()
                     true
                 }
-            })
+            }
+            recentList.addView(row)
         }
     }
 
@@ -572,5 +589,6 @@ class MainActivity : Activity() {
         val ERROR = Color.rgb(0xD7, 0x19, 0x21)
         const val CHECK_COOLDOWN_MS = 5_000L
         const val TICK_MS = 30_000L
+        const val RECENT_MEDAL_DP = 48
     }
 }

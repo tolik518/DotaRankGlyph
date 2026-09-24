@@ -4,18 +4,16 @@ import android.content.Context
 import android.content.SharedPreferences
 
 /** Shared between the settings screen and the toy service (same process). */
-class RankStore(context: Context) {
-    val prefs: SharedPreferences =
-        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+class RankStore(val prefs: SharedPreferences) {
+    constructor(context: Context) :
+        this(context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE))
 
     var accountId: Long?
         get() = prefs.getLong(KEY_ACCOUNT_ID, 0L).takeIf { it > 0 }
         set(value) {
             val editor = prefs.edit()
             if (value == null) editor.remove(KEY_ACCOUNT_ID) else editor.putLong(KEY_ACCOUNT_ID, value)
-            // A new account invalidates the cached rank.
-            if (value != cached()?.player?.accountId) editor.remove(KEY_FETCHED_AT)
-            editor.apply()
+            editor.apply() // every account keeps its own cached rank, see [cachedFor]
         }
 
     /** Show the Immortal leaderboard place (e.g. 2488) on the Immortal medal. On by default. */
@@ -35,34 +33,45 @@ class RankStore(context: Context) {
 
     data class Cached(val player: PlayerRank, val fetchedAtMs: Long)
 
-    fun cached(): Cached? {
-        val fetchedAt = prefs.getLong(KEY_FETCHED_AT, 0L)
-        if (fetchedAt <= 0) return null
-        return Cached(
-            PlayerRank(
-                accountId = prefs.getLong(KEY_CACHED_ACCOUNT, 0L),
-                personaName = prefs.getString(KEY_PERSONA, null),
-                rankTier = prefs.getInt(KEY_RANK_TIER, NONE).takeIf { it != NONE },
-                leaderboardRank = prefs.getInt(KEY_LEADERBOARD, NONE).takeIf { it != NONE },
-            ),
-            fetchedAt,
-        )
-    }
+    /** The last fetched rank of [accountId], if it is the current or a recent account. */
+    fun cachedFor(accountId: Long): Cached? =
+        rankCache()[accountId]?.let { Cached(it.player, it.fetchedAtMs) }
 
-    /** Cache only counts if it belongs to the currently configured account. */
-    fun cachedForCurrentAccount(): Cached? =
-        cached()?.takeIf { it.player.accountId == accountId }
+    fun cachedForCurrentAccount(): Cached? = accountId?.let(::cachedFor)
 
-    /** Saves a fetched rank; a success clears the last error. */
+    /**
+     * Saves a fetched rank; a success clears the last error. Only the current and the
+     * recent accounts (plus [player]'s) stay cached.
+     */
     fun save(player: PlayerRank, nowMs: Long = System.currentTimeMillis()) {
+        val keep = recentAccounts.map { it.accountId }.toSet() + listOfNotNull(accountId, player.accountId)
+        val cache = RankCache.prune(rankCache() + (player.accountId to RankCache.Entry(player, nowMs)), keep)
         prefs.edit()
             .remove(KEY_ERROR).remove(KEY_ERROR_AT).remove(KEY_ERROR_ACCOUNT)
-            .putLong(KEY_CACHED_ACCOUNT, player.accountId)
-            .putString(KEY_PERSONA, player.personaName)
-            .putInt(KEY_RANK_TIER, player.rankTier ?: NONE)
-            .putInt(KEY_LEADERBOARD, player.leaderboardRank ?: NONE)
-            .putLong(KEY_FETCHED_AT, nowMs)
+            .putString(KEY_RANK_CACHE, RankCache.encode(cache))
             .apply()
+    }
+
+    /** Reads the per-account cache; moves a single-account cache from before version 0.2 into it. */
+    private fun rankCache(): Map<Long, RankCache.Entry> {
+        val json = prefs.getString(KEY_RANK_CACHE, null)
+        if (json != null) return RankCache.decode(json)
+        val fetchedAt = prefs.getLong(LEGACY_FETCHED_AT, 0L)
+        val legacyAccount = prefs.getLong(LEGACY_CACHED_ACCOUNT, 0L)
+        if (fetchedAt <= 0 || legacyAccount <= 0) return emptyMap()
+        val player = PlayerRank(
+            accountId = legacyAccount,
+            personaName = prefs.getString(LEGACY_PERSONA, null),
+            rankTier = prefs.getInt(LEGACY_RANK_TIER, NONE).takeIf { it != NONE },
+            leaderboardRank = prefs.getInt(LEGACY_LEADERBOARD, NONE).takeIf { it != NONE },
+        )
+        val migrated = mapOf(legacyAccount to RankCache.Entry(player, fetchedAt))
+        prefs.edit()
+            .putString(KEY_RANK_CACHE, RankCache.encode(migrated))
+            .remove(LEGACY_FETCHED_AT).remove(LEGACY_CACHED_ACCOUNT).remove(LEGACY_PERSONA)
+            .remove(LEGACY_RANK_TIER).remove(LEGACY_LEADERBOARD)
+            .apply()
+        return migrated
     }
 
     /** Why the latest refresh failed; the Glyph never shows errors, so the app does. */
@@ -153,11 +162,12 @@ class RankStore(context: Context) {
         const val KEY_REFRESH_INTERVAL = "refresh_interval_minutes"
         const val KEY_SHOW_IMMORTAL_RANK = "show_immortal_rank"
         const val KEY_APP_ICON_MEDAL = "app_icon_shows_medal"
-        private const val KEY_CACHED_ACCOUNT = "cached_account_id"
-        private const val KEY_PERSONA = "persona_name"
-        private const val KEY_RANK_TIER = "rank_tier"
-        private const val KEY_LEADERBOARD = "leaderboard_rank"
-        private const val KEY_FETCHED_AT = "fetched_at"
+        const val KEY_RANK_CACHE = "rank_cache"
+        private const val LEGACY_CACHED_ACCOUNT = "cached_account_id"
+        private const val LEGACY_PERSONA = "persona_name"
+        private const val LEGACY_RANK_TIER = "rank_tier"
+        private const val LEGACY_LEADERBOARD = "leaderboard_rank"
+        private const val LEGACY_FETCHED_AT = "fetched_at"
         const val KEY_RECENT = "recent_accounts"
         const val KEY_TOY_USED = "toy_used"
         const val KEY_TOY_PROMPT_DONE = "toy_prompt_done"

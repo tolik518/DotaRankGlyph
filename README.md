@@ -36,7 +36,8 @@ In the app:
 - **Paste** fills the field from the clipboard (read only when you tap it) and shortens links to the ID.
 - **Share** a Steam profile from the Steam app or a browser to *Check Dota rank*: the link (also inside a longer
   text) is filled in and checked. Turn off **Show in the share menu** to remove the app from the share sheet.
-- **Recent** lists the last 5 checked accounts: tap to switch, long-press to remove.
+- **Recent** lists the last 5 checked accounts with their last known medal: tap to switch, long-press to remove.
+  Every recent account keeps its own cached rank, so switching shows its medal right away.
 - The status shows when the rank was last updated, and the last error in red if the latest check failed.
 - **App icon shows my medal** (off by default): the launcher icon becomes your current medal (Herald … Divine;
   Immortal and uncalibrated use the default Immortal icon). Android can't set arbitrary launcher icons, so the
@@ -102,6 +103,7 @@ The state is stored with the settings, so it survives restarts.
 | `data/RefreshPolicy.kt` | When a request may be sent: rate limits, backoff, refresh interval |
 | `data/RankStore.kt` | Account ID, cached rank, last error, settings (SharedPreferences) |
 | `data/RecentAccounts.kt` | The recent accounts list |
+| `data/RankCache.kt` | Cached rank per account (JSON in the settings) |
 | `data/RefreshInterval.kt` | Auto refresh interval limits (5 min … once a day) |
 | `glyph/` | Matrix geometry, 3×5 font, medal renderer, medal art parser, shared reload shake, rank-change animation |
 | `data/LauncherIcon.kt` | Switches the launcher alias for "App icon shows my medal" |
@@ -116,11 +118,11 @@ No AndroidX or Compose: the only dependency is the Glyph SDK, so the build stays
 
 ## Tests
 
-`./gradlew test` runs 97 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
+`./gradlew test` runs 102 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
 the OpenDota client and the Steam custom-URL lookup against a local mock server (captured player responses in `app/src/test/resources/opendota/`;
 404, minute/daily 429, rate-limit headers, 5xx, HTML/truncated bodies, timeouts, no connection, non-Latin names),
 the refresh policy (429 blocks until the UTC reset, low-quota pause, backoff, 5 s gap), shared-text parsing,
-the recent accounts list, the rank-change animations (start/end frames, star fade and blink, one flash,
+the recent accounts list, the per-account rank cache (incl. migration from the old single cache), the rank-change animations (start/end frames, star fade and blink, one flash,
 place roll), the launcher icon aliases, auto refresh interval limits,
 matrix geometry, renderer checks (lit arcs = tier, one cross per star, nothing drawn outside the LED circle),
 the Immortal leaderboard plate, and the medal art (JSON parsing, masking, all 8 bundled medals present,

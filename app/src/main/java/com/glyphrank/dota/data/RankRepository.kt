@@ -56,6 +56,7 @@ class RankRepository private constructor(private val context: Context) {
         if (store.accountId == accountId) return
         store.accountId = accountId
         store.guard = store.guard.copy(failures = 0) // the backoff was for the old account
+        if (store.appIconShowsMedal) updateLauncherIcon() // its cached medal, if any
         notifyState()
     }
 
