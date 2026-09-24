@@ -2,6 +2,7 @@ package com.glyphrank.dota.rank
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.json.JSONObject
 import org.junit.Test
 
 class PlayerInputTest {
@@ -27,6 +28,23 @@ class PlayerInputTest {
 
     @Test fun `custom steam url is recognised for later resolving`() =
         assertEquals(PlayerInput.SteamVanity("Zeitboy"), PlayerInput.parse("https://steamcommunity.com/id/Zeitboy/"))
+
+    @Test fun `steam ids and profile urls from real OpenDota responses`() {
+        // Captured responses in src/test/resources/opendota/: every profile's steamid and
+        // /profiles/ url must lead back to its account_id; /id/ urls are custom names.
+        val fixtures = listOf(116233682L, 1199208054L, 1510911485L, 1747489664L, 1145501116L, 105013326L)
+        for (id in fixtures) {
+            val profile = JSONObject(javaClass.getResource("/opendota/player_$id.json")!!.readText())
+                .getJSONObject("profile")
+            assertEquals(id, profile.getLong("account_id"))
+            assertEquals("$id", PlayerInput.Account(id), PlayerInput.parse(profile.getString("steamid")))
+            val url = profile.getString("profileurl")
+            val expected = if ("/id/" in url) PlayerInput.SteamVanity(url.trimEnd('/').substringAfterLast('/'))
+            else PlayerInput.Account(id)
+            assertEquals(url, expected, PlayerInput.parse(url))
+        }
+        assertEquals(PlayerInput.SteamVanity("player4"), PlayerInput.parse("https://steamcommunity.com/id/player4/"))
+    }
 
     @Test fun `garbage is rejected`() {
         for (bad in listOf("", "   ", "abc", "0", "5000000000", "12ab34", "99999999999999999999999")) {

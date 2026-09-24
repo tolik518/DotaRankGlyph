@@ -89,8 +89,9 @@ No AndroidX or Compose: the only dependency is the Glyph SDK, so the build stays
 
 ## Tests
 
-`./gradlew test` runs 45 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
-auto refresh interval limits,
+`./gradlew test` runs 57 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
+the OpenDota client against a local mock server (captured player responses in `app/src/test/resources/opendota/`;
+404, 429, 5xx, HTML/truncated bodies, timeouts, no connection, non-Latin names), auto refresh interval limits,
 matrix geometry, renderer checks (lit arcs = tier, one cross per star, nothing drawn outside the LED circle),
 and icon packs (zip/JSON parsing, size limits, masking, storage round trip, one clean star pip per star,
 including on the bundled medal art).
