@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Required to drive the Glyph Matrix -->
+    <uses-permission android:name="com.nothing.ketchum.permission.ENABLE" />
+    <!-- OpenDota API -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@drawable/toy_preview"
+        android:roundIcon="@drawable/toy_preview"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.DotaRankGlyph">
+
+        <!-- Not required on Phone (3), but the official example ships it; harmless. -->
+        <meta-data
+            android:name="NothingKey"
+            android:value="test" />
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- The Glyph Toy -->
+        <service
+            android:name=".toy.DotaRankToyService"
+            android:exported="true"
+            tools:ignore="ExportedService">
+            <intent-filter>
+                <action android:name="com.nothing.glyph.TOY" />
+            </intent-filter>
+
+            <meta-data
+                android:name="com.nothing.glyph.toy.name"
+                android:resource="@string/toy_name" />
+            <meta-data
+                android:name="com.nothing.glyph.toy.image"
+                android:resource="@drawable/toy_preview" />
+            <meta-data
+                android:name="com.nothing.glyph.toy.summary"
+                android:resource="@string/toy_summary" />
+            <!-- Opens the settings screen from the Glyph Toys manager -->
+            <meta-data
+                android:name="com.nothing.glyph.toy.introduction"
+                android:value="com.glyphrank.dota.ui.MainActivity" />
+            <!-- Long-press the Glyph Button = refresh -->
+            <meta-data
+                android:name="com.nothing.glyph.toy.longpress"
+                android:value="1" />
+            <!-- Can be picked as the Always-on Glyph Toy (EVENT_AOD every minute) -->
+            <meta-data
+                android:name="com.nothing.glyph.toy.aod_support"
+                android:value="1" />
+        </service>
+
+    </application>
+
+</manifest>
