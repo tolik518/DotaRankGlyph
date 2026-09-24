@@ -1,23 +1,22 @@
-package com.glyphrank.dota.toy
+package com.glyphrank.dota.glyph
 
 import android.os.Handler
 import android.os.Looper
-import com.glyphrank.dota.glyph.RankRenderer
 
 /**
  * The reload shake, shared by the Glyph toy and the settings screen (same process): a reload
  * started on either side shakes the medal on both, in step. Main thread only.
  *
- * Every reload calls [start] and later exactly one [finish]. The shake runs while any reload
- * is in flight and always stops at the end of a whole (centred) cycle.
+ * Every reload calls [start] and later [finish] with the token it got. The shake runs while
+ * any reload is in flight and always stops at the end of a whole (centred) cycle.
  */
 object ReloadShake {
     interface Listener {
         /** Show shake step [step] of the last known medal. */
         fun onShakeStep(step: Int)
 
-        /** The shake is over; [error] is set if a reload behind it failed. */
-        fun onShakeEnd(error: Throwable?)
+        /** The shake is over; show the current state again. */
+        fun onShakeEnd()
     }
 
     /** Safety net in case a reload never reports back (well past the 10 s network timeout). */
@@ -25,9 +24,10 @@ object ReloadShake {
 
     private val main = Handler(Looper.getMainLooper())
     private val listeners = LinkedHashSet<Listener>()
-    private var reloads = 0
+    /** Tokens of the reloads in flight. Cleared by the safety stop, so a late [finish] is ignored. */
+    private val reloads = HashSet<Int>()
+    private var nextToken = 1
     private var step = 0
-    private var error: Throwable? = null
 
     var isShaking = false
         private set
@@ -37,12 +37,10 @@ object ReloadShake {
             listeners.toList().forEach { it.onShakeStep(step) }
             step++
             val cycleDone = step % RankRenderer.SHAKE_CYCLE_STEPS == 0
-            if (cycleDone && (reloads == 0 || step >= MAX_STEPS)) {
-                reloads = 0
+            if (cycleDone && (reloads.isEmpty() || step >= MAX_STEPS)) {
+                reloads.clear()
                 isShaking = false
-                val e = error
-                error = null
-                listeners.toList().forEach { it.onShakeEnd(e) }
+                listeners.toList().forEach { it.onShakeEnd() }
             } else {
                 main.postDelayed(this, RankRenderer.SHAKE_FRAME_MS)
             }
@@ -57,17 +55,22 @@ object ReloadShake {
         listeners -= listener
     }
 
-    fun start() {
-        reloads++
-        if (isShaking) return
-        isShaking = true
-        step = 0
-        error = null
-        main.post(tick)
+    /** Starts (or joins) the shake for one reload; pass the token to [finish]. */
+    fun start(): Int {
+        val token = nextToken++
+        reloads += token
+        if (!isShaking) {
+            isShaking = true
+            step = 0
+            main.post(tick)
+        }
+        return token
     }
 
-    fun finish(error: Throwable? = null) {
-        if (reloads > 0) reloads--
-        if (error != null) this.error = error
+    fun finish(token: Int) {
+        reloads -= token
     }
+
+    /** One full shake cycle: feedback for a reload request that didn't need a request. */
+    fun pulse() = finish(start())
 }

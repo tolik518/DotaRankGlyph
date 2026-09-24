@@ -72,7 +72,29 @@ class OpenDotaClientTest {
 
     @Test fun `rate limit`() {
         server.handler = { Response(429, """{"error":"rate limit exceeded"}""") }
-        expectError(OpenDotaException.Kind.RATE_LIMITED) { client.fetchPlayer(105013326) }
+        val e = expectError(OpenDotaException.Kind.RATE_LIMITED) { client.fetchPlayer(105013326) }
+        assertEquals(OpenDotaException.RateLimit.MINUTE, e.limit)
+    }
+
+    @Test fun `minute and daily limits are told apart by OpenDota's 429 body`() {
+        server.handler = { Response(429, """{"error":"minute rate limit exceeded"}""") }
+        assertEquals(OpenDotaException.RateLimit.MINUTE, expectError(OpenDotaException.Kind.RATE_LIMITED) { client.fetch(1) }.limit)
+        server.handler = { Response(429, """{"error":"daily api limit exceeded"}""") }
+        assertEquals(OpenDotaException.RateLimit.DAILY, expectError(OpenDotaException.Kind.RATE_LIMITED) { client.fetch(1) }.limit)
+    }
+
+    @Test fun `rate limit headers are read`() {
+        server.handler = {
+            Response(
+                200, fixture(105013326),
+                headers = mapOf("X-Rate-Limit-Remaining-Minute" to "59", "X-Rate-Limit-Remaining-Day" to "2917"),
+            )
+        }
+        val fetch = client.fetch(105013326)
+        assertEquals(59, fetch.remainingMinute)
+        assertEquals(2917, fetch.remainingDay)
+        server.handler = { Response(200, fixture(105013326)) }
+        assertEquals(null, client.fetch(105013326).remainingDay)
     }
 
     @Test fun `server errors report the status code`() {

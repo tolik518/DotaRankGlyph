@@ -21,6 +21,7 @@ class MockHttpServer : Closeable {
         val body: String,
         val contentType: String = "application/json; charset=utf-8",
         val delayMs: Long = 0,
+        val headers: Map<String, String> = emptyMap(),
     )
 
     private val socket = ServerSocket(0, 50, InetAddress.getLoopbackAddress())
@@ -58,6 +59,7 @@ class MockHttpServer : Closeable {
             val head = "HTTP/1.1 ${response.code} Mock\r\n" +
                 "Content-Type: ${response.contentType}\r\n" +
                 "Content-Length: ${body.size}\r\n" +
+                response.headers.entries.joinToString("") { "${it.key}: ${it.value}\r\n" } +
                 "Connection: close\r\n\r\n"
             client.getOutputStream().apply {
                 write(head.toByteArray(Charsets.ISO_8859_1))

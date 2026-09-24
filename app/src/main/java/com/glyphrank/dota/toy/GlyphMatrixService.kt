@@ -2,7 +2,8 @@
  * Adapted from GlyphMatrixService.kt in Nothing's GlyphMatrix-Example-Project
  * (https://github.com/Nothing-Developer-Programme/GlyphMatrix-Example-Project).
  * Copyright (c) 2025 Nothing Technology Limited, MIT License.
- * Changes: added the AOD event, error-tolerant frame pushing, no-op defaults.
+ * Changes: added the AOD event, error-tolerant frame pushing, no-op defaults,
+ * reconnect handling.
  */
 package com.glyphrank.dota.toy
 
@@ -48,17 +49,33 @@ abstract class GlyphMatrixService(private val tag: String) : Service() {
     var glyphMatrixManager: GlyphMatrixManager? = null
         private set
 
+    /**
+     * True between [onMatrixConnected] and [onMatrixDisconnected]. If Nothing's Glyph service
+     * restarts, it disconnects and connects again while we stay bound: each connect gets
+     * exactly one matching disconnect, and no frames go to a dead connection.
+     */
+    private var connected = false
+
     private val gmmCallback = object : GlyphMatrixManager.Callback {
         override fun onServiceConnected(name: ComponentName?) {
             val gmm = glyphMatrixManager ?: return
             Log.d(LOG_TAG, "$tag: connected")
+            disconnect() // a reconnect without a disconnect first
             gmm.register(Glyph.DEVICE_23112) // Nothing Phone (3)
+            connected = true
             onMatrixConnected(applicationContext, gmm)
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
             Log.d(LOG_TAG, "$tag: matrix service disconnected")
+            disconnect()
         }
+    }
+
+    private fun disconnect() {
+        if (!connected) return
+        connected = false
+        onMatrixDisconnected(applicationContext)
     }
 
     final override fun onBind(intent: Intent?): IBinder? {
@@ -72,7 +89,7 @@ abstract class GlyphMatrixService(private val tag: String) : Service() {
 
     final override fun onUnbind(intent: Intent?): Boolean {
         Log.d(LOG_TAG, "$tag: onUnbind")
-        onMatrixDisconnected(applicationContext)
+        disconnect()
         glyphMatrixManager?.let {
             runCatching { it.turnOff() }
             runCatching { it.unInit() }
@@ -83,7 +100,7 @@ abstract class GlyphMatrixService(private val tag: String) : Service() {
 
     /** Pushes a 25x25 frame; values 0..4095. Safe to call when not connected. */
     protected fun showFrame(frame: IntArray) {
-        val gmm = glyphMatrixManager ?: return
+        val gmm = glyphMatrixManager?.takeIf { connected } ?: return
         try {
             gmm.setMatrixFrame(frame)
         } catch (e: Exception) {

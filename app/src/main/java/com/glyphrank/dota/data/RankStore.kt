@@ -48,8 +48,10 @@ class RankStore(context: Context) {
     fun cachedForCurrentAccount(): Cached? =
         cached()?.takeIf { it.player.accountId == accountId }
 
+    /** Saves a fetched rank; a success clears the last error. */
     fun save(player: PlayerRank, nowMs: Long = System.currentTimeMillis()) {
         prefs.edit()
+            .remove(KEY_ERROR).remove(KEY_ERROR_AT).remove(KEY_ERROR_ACCOUNT)
             .putLong(KEY_CACHED_ACCOUNT, player.accountId)
             .putString(KEY_PERSONA, player.personaName)
             .putInt(KEY_RANK_TIER, player.rankTier ?: NONE)
@@ -57,6 +59,47 @@ class RankStore(context: Context) {
             .putLong(KEY_FETCHED_AT, nowMs)
             .apply()
     }
+
+    /** Why the latest refresh failed; the Glyph never shows errors, so the app does. */
+    data class LastError(val accountId: Long, val message: String, val atMs: Long)
+
+    val lastError: LastError?
+        get() {
+            val message = prefs.getString(KEY_ERROR, null) ?: return null
+            return LastError(prefs.getLong(KEY_ERROR_ACCOUNT, 0L), message, prefs.getLong(KEY_ERROR_AT, 0L))
+        }
+
+    /** The last error, if it belongs to the current account. */
+    fun lastErrorForCurrentAccount(): LastError? = lastError?.takeIf { it.accountId == accountId }
+
+    fun saveError(accountId: Long, message: String, nowMs: Long = System.currentTimeMillis()) {
+        prefs.edit()
+            .putString(KEY_ERROR, message)
+            .putLong(KEY_ERROR_AT, nowMs)
+            .putLong(KEY_ERROR_ACCOUNT, accountId)
+            .apply()
+    }
+
+    /** See [RefreshPolicy]. */
+    var guard: GuardState
+        get() = GuardState(
+            blockedUntilMs = prefs.getLong(KEY_GUARD_BLOCKED_UNTIL, 0L),
+            blockedDaily = prefs.getBoolean(KEY_GUARD_BLOCKED_DAILY, false),
+            pausedUntilMs = prefs.getLong(KEY_GUARD_PAUSED_UNTIL, 0L),
+            failures = prefs.getInt(KEY_GUARD_FAILURES, 0),
+            lastAttemptMs = prefs.getLong(KEY_GUARD_LAST_ATTEMPT, 0L),
+            lastAttemptAccount = prefs.getLong(KEY_GUARD_LAST_ACCOUNT, 0L),
+        )
+        set(value) {
+            prefs.edit()
+                .putLong(KEY_GUARD_BLOCKED_UNTIL, value.blockedUntilMs)
+                .putBoolean(KEY_GUARD_BLOCKED_DAILY, value.blockedDaily)
+                .putLong(KEY_GUARD_PAUSED_UNTIL, value.pausedUntilMs)
+                .putInt(KEY_GUARD_FAILURES, value.failures)
+                .putLong(KEY_GUARD_LAST_ATTEMPT, value.lastAttemptMs)
+                .putLong(KEY_GUARD_LAST_ACCOUNT, value.lastAttemptAccount)
+                .apply()
+        }
 
     companion object {
         const val PREFS_NAME = "dota_rank"
@@ -68,6 +111,18 @@ class RankStore(context: Context) {
         private const val KEY_RANK_TIER = "rank_tier"
         private const val KEY_LEADERBOARD = "leaderboard_rank"
         private const val KEY_FETCHED_AT = "fetched_at"
+        private const val KEY_ERROR = "last_error"
+        private const val KEY_ERROR_AT = "last_error_at"
+        private const val KEY_ERROR_ACCOUNT = "last_error_account_id"
+        private const val KEY_GUARD_BLOCKED_UNTIL = "guard_blocked_until"
+        private const val KEY_GUARD_BLOCKED_DAILY = "guard_blocked_daily"
+        private const val KEY_GUARD_PAUSED_UNTIL = "guard_paused_until"
+        private const val KEY_GUARD_FAILURES = "guard_failures"
+        private const val KEY_GUARD_LAST_ATTEMPT = "guard_last_attempt"
+        private const val KEY_GUARD_LAST_ACCOUNT = "guard_last_account_id"
         private const val NONE = -1
+
+        /** Bookkeeping keys that don't change what the Glyph shows. */
+        fun isBookkeeping(key: String?) = key != null && (key.startsWith("guard_") || key.startsWith("last_error"))
     }
 }

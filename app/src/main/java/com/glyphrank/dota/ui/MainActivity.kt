@@ -9,6 +9,8 @@ import android.graphics.Typeface
 import android.os.Bundle
 import android.os.SystemClock
 import android.text.InputType
+import android.text.SpannableStringBuilder
+import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
@@ -24,37 +26,31 @@ import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import com.glyphrank.dota.data.BundledMedals
-import com.glyphrank.dota.data.OpenDotaClient
-import com.glyphrank.dota.data.PlayerRank
+import com.glyphrank.dota.data.RankRepository
 import com.glyphrank.dota.data.RankStore
 import com.glyphrank.dota.data.RefreshInterval
+import com.glyphrank.dota.data.RefreshPolicy.Decision
 import com.glyphrank.dota.data.SteamProfileResolver
 import com.glyphrank.dota.glyph.MedalArt
 import com.glyphrank.dota.glyph.RankRenderer
+import com.glyphrank.dota.glyph.ReloadShake
 import com.glyphrank.dota.rank.PlayerInput
 import com.glyphrank.dota.rank.RankTier
-import com.glyphrank.dota.toy.ReloadShake
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 /** Plain-View UI on purpose: no AndroidX/Compose dependencies to keep the build tiny. */
 class MainActivity : Activity() {
 
-    private lateinit var store: RankStore
+    private lateinit var repository: RankRepository
+    private val store: RankStore get() = repository.store
     private var medals: MedalArt? = null
-    private var currentPlayer: PlayerRank? = null
     private val renderer = RankRenderer()
-    private val client = OpenDotaClient()
     private val steam = SteamProfileResolver()
     private val io: ExecutorService = Executors.newSingleThreadExecutor()
 
     /** Medal being shaken in the preview, in step with the Glyph; null when idle. */
     private var shakeBase: IntArray? = null
-    /** True while our own lookup is holding the shared [ReloadShake]. */
-    private var ownsShake = false
-    /** Our own lookup's result, shown once the shake has finished its cycle. */
-    private var afterShake: (() -> Unit)? = null
-    private var visible = false
 
     /** Follows the shared reload shake, whether the reload started here or on the Glyph. */
     private val shakeListener = object : ReloadShake.Listener {
@@ -63,26 +59,32 @@ class MainActivity : Activity() {
             preview.frame = renderer.shake(base, step)
         }
 
-        override fun onShakeEnd(error: Throwable?) {
+        override fun onShakeEnd() {
             shakeBase = null
-            val own = afterShake
-            afterShake = null
-            val cached = store.cachedForCurrentAccount()
-            when {
-                own != null -> own()
-                error != null -> showError(error.message ?: "Lookup failed") // Glyph long-press failed
-                cached != null -> showPlayer(cached.player)
-                else -> preview.frame = glyphFrame()
-            }
+            render()
+        }
+    }
+
+    /** Refreshes started here or by the toy, errors, account changes. */
+    private val repositoryListener = object : RankRepository.Listener {
+        override fun onStateChanged() = render()
+    }
+
+    /** Keeps "Updated … ago" current while the screen is visible. */
+    private val ticker = object : Runnable {
+        override fun run() {
+            render()
+            status.postDelayed(this, TICK_MS)
         }
     }
 
     /** "Save & check rank" stays disabled while a lookup runs and for [CHECK_COOLDOWN_MS] after a tap. */
-    private var fetching = false
+    private var resolving = false
     private var cooldownUntil = 0L
     private val cooldownOver = Runnable { updateCheckButton() }
 
     private lateinit var input: EditText
+    private lateinit var notice: TextView
     private lateinit var status: TextView
     private lateinit var preview: MatrixPreviewView
     private lateinit var checkButton: Button
@@ -90,45 +92,30 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        store = RankStore(this)
+        repository = RankRepository.get(this)
         medals = BundledMedals.load(this)
         setContentView(buildLayout())
         setUpIntervalPicker()
-
         store.accountId?.let { input.setText(it.toString()) }
-        val cached = store.cachedForCurrentAccount()
-        when {
-            cached != null -> showPlayer(cached.player)
-            store.accountId == null -> {
-                preview.frame = renderer.message("ID")
-                status.text = "Enter your Dota friend ID to get started."
-            }
-            else -> {
-                preview.frame = renderer.loading(0)
-                status.text = "Not checked yet."
-            }
-        }
+        render()
     }
 
     override fun onStart() {
         super.onStart()
-        visible = true
         ReloadShake.addListener(shakeListener)
+        repository.addListener(repositoryListener)
+        ticker.run()
     }
 
     override fun onStop() {
-        visible = false
         ReloadShake.removeListener(shakeListener)
-        if (shakeBase != null) {
-            shakeBase = null
-            preview.frame = glyphFrame()
-        }
-        afterShake?.let { afterShake = null; it() } // don't lose our result while hidden
+        repository.removeListener(repositoryListener)
+        status.removeCallbacks(ticker)
+        shakeBase = null
         super.onStop()
     }
 
     override fun onDestroy() {
-        releaseShake(null)
         io.shutdownNow()
         super.onDestroy()
     }
@@ -136,101 +123,119 @@ class MainActivity : Activity() {
     private fun saveAndCheck() {
         if (!checkButton.isEnabled) return // cooling down (the keyboard's Done key ends up here too)
         when (val parsed = PlayerInput.parse(input.text.toString())) {
-            is PlayerInput.Invalid -> showError(parsed.reason)
+            is PlayerInput.Invalid -> showNotice(parsed.reason, error = true)
             is PlayerInput.SteamVanity -> resolveThenFetch(parsed.vanityName)
             is PlayerInput.Account -> saveAndFetch(parsed.accountId)
         }
     }
 
     private fun saveAndFetch(accountId: Long) {
-        store.accountId = accountId
+        startCooldown()
+        repository.setAccount(accountId)
         input.setText(accountId.toString())
-        fetch(accountId)
+        showNotice(null)
+        when (val decision = repository.refresh(manual = true)) {
+            Decision.Fetch, Decision.Joined ->
+                // While shaking, the result appears once the shake has finished its cycle.
+                if (ReloadShake.isShaking) status.text = "Checking OpenDota for $accountId…"
+            is Decision.Blocked -> showNotice(blockedText(decision.untilMs, decision.daily), error = true)
+            is Decision.TooSoon -> {
+                if (store.cachedForCurrentAccount() != null) ReloadShake.pulse()
+                showNotice("Just checked. Try again in a few seconds.")
+            }
+            else -> Unit // manual checks don't wait for the refresh interval
+        }
+        updateCheckButton()
     }
 
     /** steamcommunity.com/id/<name>: one Steam lookup, then the account ID is stored like any other. */
     private fun resolveThenFetch(vanityName: String) {
         startCooldown()
-        status.setTextColor(TEXT)
-        status.text = "Looking up steamcommunity.com/id/$vanityName…"
+        resolving = true
+        updateCheckButton()
+        showNotice("Looking up steamcommunity.com/id/$vanityName…")
         io.execute {
             val result = runCatching { steam.resolveVanity(vanityName) }
             runOnUiThread {
                 if (isDestroyed) return@runOnUiThread
+                resolving = false
                 result
                     .onSuccess { accountId -> saveAndFetch(accountId) }
-                    .onFailure {
-                        fetching = false
-                        updateCheckButton()
-                        showError(it.message ?: "Steam lookup failed")
-                    }
+                    .onFailure { showNotice(it.message ?: "Steam lookup failed", error = true) }
+                updateCheckButton()
             }
         }
     }
 
     private fun startCooldown() {
-        fetching = true
         cooldownUntil = SystemClock.elapsedRealtime() + CHECK_COOLDOWN_MS
         checkButton.removeCallbacks(cooldownOver)
         checkButton.postDelayed(cooldownOver, CHECK_COOLDOWN_MS)
         updateCheckButton()
     }
 
-    private fun fetch(accountId: Long) {
-        startCooldown()
-        status.setTextColor(TEXT)
-        status.text = "Checking OpenDota for $accountId…"
-        if (currentPlayer?.accountId == accountId) {
-            ownsShake = true
-            ReloadShake.start() // shakes the preview, and the Glyph if the toy is showing
-        } else {
-            preview.frame = renderer.loading(3)
-        }
-        io.execute {
-            val result = runCatching { client.fetchPlayer(accountId) }
-            runOnUiThread {
-                releaseShake(result.exceptionOrNull()) // even if we're gone, or the Glyph keeps shaking
-                if (isDestroyed) return@runOnUiThread
-                val show: () -> Unit = {
-                    fetching = false
-                    updateCheckButton()
-                    result
-                        .onSuccess { player ->
-                            store.save(player)
-                            showPlayer(player)
-                        }
-                        .onFailure { showError(it.message ?: "Lookup failed") }
-                }
-                // Let the shake finish its cycle first, in step with the Glyph.
-                if (visible && ReloadShake.isShaking) afterShake = show else show()
-            }
-        }
-    }
-
-    private fun releaseShake(error: Throwable?) {
-        if (!ownsShake) return
-        ownsShake = false
-        ReloadShake.finish(error)
-    }
-
     private fun updateCheckButton() {
-        checkButton.isEnabled = !fetching && SystemClock.elapsedRealtime() >= cooldownUntil
+        checkButton.isEnabled = !resolving && !repository.isLoading &&
+            SystemClock.elapsedRealtime() >= cooldownUntil
     }
 
-    private fun showPlayer(player: PlayerRank) {
-        currentPlayer = player
-        preview.frame = renderer.render(player.state, medals, store.showImmortalRank)
-        val name = player.personaName ?: "Player ${player.accountId}"
-        status.setTextColor(TEXT)
-        status.text = "$name\n${RankTier.describe(player.state)}  (rank_tier ${player.rankTier ?: "none"})"
+    /** A message about the last button press (bad input, Steam lookup, rate limit); null hides it. */
+    private fun showNotice(message: String?, error: Boolean = false) {
+        notice.visibility = if (message == null) View.GONE else View.VISIBLE
+        notice.text = message
+        notice.setTextColor(if (error) ERROR else TEXT)
     }
 
-    /** Errors appear as text only; the preview keeps showing what the Glyph shows. */
-    private fun showError(message: String) {
-        status.setTextColor(ERROR)
-        status.text = message
+    /** Shows the saved state: preview like the Glyph, rank, age, last error. */
+    private fun render() {
+        updateCheckButton()
+        if (ReloadShake.isShaking) return // results appear once the shake has finished its cycle
         preview.frame = glyphFrame()
+        status.text = statusText()
     }
+
+    private fun statusText(): CharSequence {
+        val accountId = store.accountId ?: return "Enter your Dota friend ID to get started."
+        val now = System.currentTimeMillis()
+        val cached = store.cachedForCurrentAccount()
+        val error = store.lastErrorForCurrentAccount()?.takeIf { cached == null || it.atMs >= cached.fetchedAtMs }
+        val text = SpannableStringBuilder()
+        if (cached != null) {
+            val player = cached.player
+            text.append(player.personaName ?: "Player ${player.accountId}").append('\n')
+            text.append("${RankTier.describe(player.state)}  (rank_tier ${player.rankTier ?: "none"})\n")
+            val age = "Updated ${TimeText.ago(cached.fetchedAtMs, now)}" +
+                if (repository.isLoading) " · checking…" else ""
+            text.append(age, ForegroundColorSpan(MUTED), 0)
+        } else {
+            text.append(
+                when {
+                    repository.isLoading -> "Checking OpenDota for $accountId…"
+                    error == null -> "Not checked yet."
+                    else -> "No rank yet for $accountId."
+                },
+            )
+        }
+        if (error != null) {
+            text.append('\n')
+            text.append("Last check failed (${TimeText.clock(this, error.atMs)}): ${error.message}", ForegroundColorSpan(ERROR), 0)
+        }
+        val guard = store.guard
+        when {
+            guard.blockedDaily && guard.blockedUntilMs > now ->
+                text.append('\n').append(blockedText(guard.blockedUntilMs, daily = true), ForegroundColorSpan(ERROR), 0)
+            guard.pausedUntilMs > now ->
+                text.append('\n').append(
+                    "Few OpenDota requests left today; auto refresh resumes at ${TimeText.clock(this, guard.pausedUntilMs)}.",
+                    ForegroundColorSpan(MUTED), 0,
+                )
+        }
+        return text
+    }
+
+    private fun blockedText(untilMs: Long, daily: Boolean): String =
+        if (daily) "OpenDota daily limit reached, checking again at ${TimeText.clock(this, untilMs)}."
+        else "OpenDota rate limit hit. Try again in a minute."
 
     /** Mirrors the toy: last known medal for the saved account, never an error. */
     private fun glyphFrame(): IntArray {
@@ -238,6 +243,7 @@ class MainActivity : Activity() {
         return when {
             cached != null -> renderer.render(cached.player.state, medals, store.showImmortalRank)
             store.accountId == null -> renderer.message("ID")
+            repository.isLoading -> renderer.loading(3)
             else -> renderer.loading(0)
         }
     }
@@ -259,10 +265,6 @@ class MainActivity : Activity() {
     }
 
     // --- preview ----------------------------------------------------------------
-
-    private fun refreshPreview() {
-        currentPlayer?.let { preview.frame = renderer.render(it.state, medals, store.showImmortalRank) }
-    }
 
     private fun openToyManager() {
         val intent = Intent().setComponent(
@@ -308,6 +310,9 @@ class MainActivity : Activity() {
         }
         column.addView(checkButton, spaced(top = 8))
 
+        notice = text("", 14f, TEXT).apply { visibility = View.GONE }
+        column.addView(notice, spaced(top = 8))
+
         status = text("", 16f, TEXT)
         column.addView(status, spaced(top = 16, bottom = 16))
 
@@ -343,7 +348,7 @@ class MainActivity : Activity() {
             isChecked = store.showImmortalRank
             setOnCheckedChangeListener { _, checked ->
                 store.showImmortalRank = checked
-                refreshPreview()
+                render()
             }
         }, spaced(top = 8))
         column.addView(text(
@@ -393,5 +398,6 @@ class MainActivity : Activity() {
         val MUTED = Color.rgb(0x8A, 0x8A, 0x8A)
         val ERROR = Color.rgb(0xD7, 0x19, 0x21)
         const val CHECK_COOLDOWN_MS = 5_000L
+        const val TICK_MS = 30_000L
     }
 }

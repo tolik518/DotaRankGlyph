@@ -17,10 +17,23 @@ data class PlayerRank(
     val state: RankState get() = RankTier.decode(rankTier, leaderboardRank)
 }
 
-class OpenDotaException(val kind: Kind, message: String, cause: Throwable? = null) :
-    Exception(message, cause) {
+class OpenDotaException(
+    val kind: Kind,
+    message: String,
+    cause: Throwable? = null,
+    /** For [Kind.RATE_LIMITED]: which limit was hit. */
+    val limit: RateLimit? = null,
+) : Exception(message, cause) {
     enum class Kind { NOT_FOUND, RATE_LIMITED, HTTP, NETWORK, PARSE }
+    enum class RateLimit { MINUTE, DAILY }
 }
+
+/** A player response plus OpenDota's rate-limit headers (null if missing). */
+data class PlayerFetch(
+    val player: PlayerRank,
+    val remainingMinute: Int?,
+    val remainingDay: Int?,
+)
 
 object OpenDotaParser {
     /** Parses the body of `GET /api/players/{account_id}`. */
@@ -57,7 +70,10 @@ class OpenDotaClient(
     private val timeoutMs: Int = 10_000,
 ) {
     /** Blocking call — run it off the main thread. */
-    fun fetchPlayer(accountId: Long): PlayerRank {
+    fun fetchPlayer(accountId: Long): PlayerRank = fetch(accountId).player
+
+    /** Like [fetchPlayer], plus the rate-limit headers. Blocking. */
+    fun fetch(accountId: Long): PlayerFetch {
         val connection = try {
             (URL("$baseUrl/players/$accountId").openConnection() as HttpURLConnection).apply {
                 connectTimeout = timeoutMs
@@ -71,18 +87,31 @@ class OpenDotaClient(
         try {
             val code = connection.responseCode
             when {
-                code == 429 -> throw OpenDotaException(
-                    OpenDotaException.Kind.RATE_LIMITED, "OpenDota rate limit hit, try again in a minute",
-                )
+                code == 429 -> throw rateLimited(connection)
                 code == 404 -> throw OpenDotaException(OpenDotaException.Kind.NOT_FOUND, "Player $accountId not found")
                 code !in 200..299 -> throw OpenDotaException(OpenDotaException.Kind.HTTP, "OpenDota returned HTTP $code")
             }
             val body = connection.inputStream.bufferedReader().use { it.readText() }
-            return OpenDotaParser.parsePlayer(accountId, body)
+            return PlayerFetch(
+                OpenDotaParser.parsePlayer(accountId, body),
+                remainingMinute = connection.getHeaderField("X-Rate-Limit-Remaining-Minute")?.trim()?.toIntOrNull(),
+                remainingDay = connection.getHeaderField("X-Rate-Limit-Remaining-Day")?.trim()?.toIntOrNull(),
+            )
         } catch (e: IOException) {
             throw OpenDotaException(OpenDotaException.Kind.NETWORK, "Could not reach OpenDota", e)
         } finally {
             connection.disconnect()
         }
+    }
+
+    /** OpenDota answers `{"error":"daily api limit exceeded"}` or `…"minute rate limit exceeded"}`. */
+    private fun rateLimited(connection: HttpURLConnection): OpenDotaException {
+        val body = runCatching { connection.errorStream?.bufferedReader()?.use { it.readText() } }.getOrNull().orEmpty()
+        val daily = body.contains("daily", ignoreCase = true)
+        return OpenDotaException(
+            OpenDotaException.Kind.RATE_LIMITED,
+            if (daily) "OpenDota daily limit reached" else "OpenDota rate limit hit, try again in a minute",
+            limit = if (daily) OpenDotaException.RateLimit.DAILY else OpenDotaException.RateLimit.MINUTE,
+        )
     }
 }
