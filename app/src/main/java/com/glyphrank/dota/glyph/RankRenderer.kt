@@ -23,19 +23,18 @@ class RankRenderer(
     private val dim: Int = 480,
 ) {
     /**
-     * Renders [state]. With an [iconPack], Herald..Immortal use the pack's icon for that
-     * medal (stars overlaid on the top arc, the Immortal leaderboard place on a plate in the
-     * lower part if [showImmortalRank]); tiers missing from the pack, and status screens,
-     * use the built-in emblem.
+     * Renders [state]. With [medals], Herald..Immortal use that medal's art (stars overlaid
+     * on the top edge, the Immortal leaderboard place on a plate in the lower part if
+     * [showImmortalRank]); medals without art, and status screens, use the built-in emblem.
      */
-    fun render(state: RankState, iconPack: IconPack?, showImmortalRank: Boolean = true): IntArray {
-        val icon = when (state) {
-            is RankState.Ranked -> iconPack?.iconFor(state.medal)
-            is RankState.Immortal -> iconPack?.iconFor(Medal.IMMORTAL)
+    fun render(state: RankState, medals: MedalArt?, showImmortalRank: Boolean = true): IntArray {
+        val art = when (state) {
+            is RankState.Ranked -> medals?.frameFor(state.medal)
+            is RankState.Immortal -> medals?.frameFor(Medal.IMMORTAL)
             RankState.Uncalibrated -> null
         } ?: return render(state, showImmortalRank)
         return MatrixCanvas().apply {
-            icon.copyInto(pixels)
+            art.copyInto(pixels)
             when (state) {
                 is RankState.Ranked -> drawStarPips(state.stars)
                 is RankState.Immortal -> if (showImmortalRank) state.leaderboardRank?.let { drawRankPlate(it) }
@@ -124,7 +123,7 @@ class RankRenderer(
 
     /**
      * Earned stars as single bright LEDs on a dark band cut into the top edge of the art,
-     * so they read cleanly over any icon.
+     * so they read cleanly over any art.
      */
     private fun MatrixCanvas.drawStarPips(stars: Int) {
         if (stars <= 0) return
@@ -144,7 +143,7 @@ class RankRenderer(
 
     /**
      * Clears tiny pieces of art that a cut (star band, rank plate) sliced off the rest of
-     * the icon ([cut] = art LEDs it switched off). On the matrix a lone lit LED next to the
+     * the art ([cut] = art LEDs it switched off). On the matrix a lone lit LED next to the
      * cut looks like an extra star or a stray dot.
      */
     private fun MatrixCanvas.removeCutOffFragments(cut: BooleanArray) {

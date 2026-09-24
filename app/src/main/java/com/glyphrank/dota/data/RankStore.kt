@@ -18,11 +18,6 @@ class RankStore(context: Context) {
             editor.apply()
         }
 
-    /** Which art the toy uses for ranked players. */
-    var useIconPack: Boolean
-        get() = prefs.getBoolean(KEY_USE_ICON_PACK, false)
-        set(value) = prefs.edit().putBoolean(KEY_USE_ICON_PACK, value).apply()
-
     /** Show the Immortal leaderboard place (e.g. 2488) on the Immortal medal. On by default. */
     var showImmortalRank: Boolean
         get() = prefs.getBoolean(KEY_SHOW_IMMORTAL_RANK, true)
@@ -32,10 +27,6 @@ class RankStore(context: Context) {
     var refreshIntervalMinutes: Int
         get() = RefreshInterval.clamp(prefs.getInt(KEY_REFRESH_INTERVAL, RefreshInterval.DEFAULT_MINUTES))
         set(value) = prefs.edit().putInt(KEY_REFRESH_INTERVAL, RefreshInterval.clamp(value)).apply()
-
-    /** Bumped on every import so the toy service notices a new pack file. */
-    fun markIconPackChanged() =
-        prefs.edit().putLong(KEY_ICON_PACK_VERSION, System.currentTimeMillis()).apply()
 
     data class Cached(val player: PlayerRank, val fetchedAtMs: Long)
 
@@ -70,8 +61,6 @@ class RankStore(context: Context) {
     companion object {
         const val PREFS_NAME = "dota_rank"
         const val KEY_ACCOUNT_ID = "account_id"
-        const val KEY_USE_ICON_PACK = "use_icon_pack"
-        const val KEY_ICON_PACK_VERSION = "icon_pack_version"
         const val KEY_REFRESH_INTERVAL = "refresh_interval_minutes"
         const val KEY_SHOW_IMMORTAL_RANK = "show_immortal_rank"
         private const val KEY_CACHED_ACCOUNT = "cached_account_id"

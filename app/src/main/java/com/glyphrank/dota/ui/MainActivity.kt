@@ -23,12 +23,12 @@ import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
-import com.glyphrank.dota.data.IconPackStore
+import com.glyphrank.dota.data.BundledMedals
 import com.glyphrank.dota.data.OpenDotaClient
 import com.glyphrank.dota.data.PlayerRank
 import com.glyphrank.dota.data.RankStore
 import com.glyphrank.dota.data.RefreshInterval
-import com.glyphrank.dota.glyph.IconPack
+import com.glyphrank.dota.glyph.MedalArt
 import com.glyphrank.dota.glyph.RankRenderer
 import com.glyphrank.dota.rank.PlayerInput
 import com.glyphrank.dota.rank.RankTier
@@ -40,7 +40,7 @@ import java.util.concurrent.Executors
 class MainActivity : Activity() {
 
     private lateinit var store: RankStore
-    private lateinit var iconPacks: IconPackStore
+    private var medals: MedalArt? = null
     private var currentPlayer: PlayerRank? = null
     private val renderer = RankRenderer()
     private val client = OpenDotaClient()
@@ -85,16 +85,12 @@ class MainActivity : Activity() {
     private lateinit var preview: MatrixPreviewView
     private lateinit var checkButton: Button
     private lateinit var intervalPicker: Spinner
-    private lateinit var packSwitch: Switch
-    private lateinit var packStatus: TextView
-    private lateinit var removePackButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = RankStore(this)
-        iconPacks = IconPackStore(this)
+        medals = BundledMedals.load(this)
         setContentView(buildLayout())
-        updatePackUi(iconPacks.load())
         setUpIntervalPicker()
 
         store.accountId?.let { input.setText(it.toString()) }
@@ -198,7 +194,7 @@ class MainActivity : Activity() {
 
     private fun showPlayer(player: PlayerRank) {
         currentPlayer = player
-        preview.frame = renderer.render(player.state, activeIconPack(), store.showImmortalRank)
+        preview.frame = renderer.render(player.state, medals, store.showImmortalRank)
         val name = player.personaName ?: "Player ${player.accountId}"
         status.setTextColor(TEXT)
         status.text = "$name\n${RankTier.describe(player.state)}  (rank_tier ${player.rankTier ?: "none"})"
@@ -215,7 +211,7 @@ class MainActivity : Activity() {
     private fun glyphFrame(): IntArray {
         val cached = store.cachedForCurrentAccount()
         return when {
-            cached != null -> renderer.render(cached.player.state, activeIconPack(), store.showImmortalRank)
+            cached != null -> renderer.render(cached.player.state, medals, store.showImmortalRank)
             store.accountId == null -> renderer.message("ID")
             else -> renderer.loading(0)
         }
@@ -237,78 +233,10 @@ class MainActivity : Activity() {
         }
     }
 
-    // --- icon pack --------------------------------------------------------------
-
-    private fun activeIconPack(): IconPack? = iconPacks.displayPack(store.useIconPack)
-
-    private fun pickIconPack() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-            .addCategory(Intent.CATEGORY_OPENABLE)
-            .setType("*/*")
-            .putExtra(
-                Intent.EXTRA_MIME_TYPES,
-                arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"),
-            )
-        try {
-            startActivityForResult(intent, REQUEST_ICON_PACK)
-        } catch (e: ActivityNotFoundException) {
-            Toast.makeText(this, "No file picker available", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    @Deprecated("Plain Activity API; fine for a single picker")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != REQUEST_ICON_PACK || resultCode != RESULT_OK) return
-        val uri = data?.data ?: return
-        packStatus.text = "Importing…"
-        io.execute {
-            val result = runCatching { iconPacks.import(this, uri) }
-            runOnUiThread {
-                if (isDestroyed) return@runOnUiThread
-                result
-                    .onSuccess { pack ->
-                        store.useIconPack = true
-                        store.markIconPackChanged()
-                        updatePackUi(pack)
-                        refreshPreview()
-                    }
-                    .onFailure {
-                        updatePackUi(iconPacks.load())
-                        packStatus.setTextColor(ERROR)
-                        packStatus.text = it.message ?: "Import failed"
-                    }
-            }
-        }
-    }
-
-    private fun updatePackUi(pack: IconPack?) {
-        packStatus.setTextColor(MUTED)
-        packSwitch.setOnCheckedChangeListener(null)
-        packSwitch.isEnabled = pack != null
-        packSwitch.isChecked = pack != null && store.useIconPack
-        packSwitch.setOnCheckedChangeListener { _, checked ->
-            store.useIconPack = checked
-            refreshPreview()
-        }
-        removePackButton.visibility = if (pack != null) View.VISIBLE else View.GONE
-        packStatus.text = when {
-            pack == null -> "Bundled Dota 2 medal icons are in use."
-            pack.size == 8 -> "Icon pack: all 8 medals."
-            else -> "Icon pack: ${pack.size} of 8 medals (others use bundled Dota 2 medals)."
-        }
-    }
-
-    private fun removeIconPack() {
-        iconPacks.delete()
-        store.useIconPack = false
-        store.markIconPackChanged()
-        updatePackUi(null)
-        refreshPreview()
-    }
+    // --- preview ----------------------------------------------------------------
 
     private fun refreshPreview() {
-        currentPlayer?.let { preview.frame = renderer.render(it.state, activeIconPack(), store.showImmortalRank) }
+        currentPlayer?.let { preview.frame = renderer.render(it.state, medals, store.showImmortalRank) }
     }
 
     private fun openToyManager() {
@@ -382,7 +310,7 @@ class MainActivity : Activity() {
             13f, MUTED,
         ), spaced(top = 4))
 
-        column.addView(text("ICON STYLE", 14f, TEXT, bold = true), spaced(top = 24))
+        column.addView(text("DISPLAY", 14f, TEXT, bold = true), spaced(top = 24))
         column.addView(Switch(this).apply {
             text = "Show exact rank for Immortals"
             setTextColor(TEXT)
@@ -395,28 +323,6 @@ class MainActivity : Activity() {
         }, spaced(top = 8))
         column.addView(text(
             "Immortal medals show the leaderboard place, e.g. 2488, when OpenDota has one.",
-            13f, MUTED,
-        ), spaced(top = 4))
-        packSwitch = Switch(this).apply {
-            text = "Override with imported icon pack"
-            setTextColor(TEXT)
-            typeface = Typeface.MONOSPACE
-        }
-        column.addView(packSwitch, spaced(top = 8))
-        packStatus = text("", 13f, MUTED)
-        column.addView(packStatus, spaced(top = 4))
-        column.addView(Button(this).apply {
-            text = "Import icon pack (.zip)"
-            setOnClickListener { pickIconPack() }
-        }, spaced(top = 8))
-        removePackButton = Button(this).apply {
-            text = "Remove icon pack"
-            setOnClickListener { removeIconPack() }
-        }
-        column.addView(removePackButton)
-        column.addView(text(
-            "Bundled medal icons are used by default. An imported pack can override them; imported " +
-                "packs stay on this phone.",
             13f, MUTED,
         ), spaced(top = 4))
 
@@ -461,7 +367,6 @@ class MainActivity : Activity() {
         val TEXT = Color.WHITE
         val MUTED = Color.rgb(0x8A, 0x8A, 0x8A)
         val ERROR = Color.rgb(0xD7, 0x19, 0x21)
-        const val REQUEST_ICON_PACK = 42
         const val CHECK_COOLDOWN_MS = 5_000L
     }
 }

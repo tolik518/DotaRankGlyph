@@ -6,10 +6,11 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
-import com.glyphrank.dota.data.IconPackStore
+import com.glyphrank.dota.data.BundledMedals
 import com.glyphrank.dota.data.OpenDotaClient
 import com.glyphrank.dota.data.RankStore
 import com.glyphrank.dota.data.RefreshInterval
+import com.glyphrank.dota.glyph.MedalArt
 import com.glyphrank.dota.glyph.RankRenderer
 import com.nothing.ketchum.GlyphMatrixManager
 import java.util.concurrent.ExecutorService
@@ -26,7 +27,7 @@ import java.util.concurrent.RejectedExecutionException
  *  - Errors:     never shown on the Glyph; the last known medal stays. The app shows them.
  *  - AOD:        re-renders on every system tick (~1/min); fetches only when the cache is stale.
  *  - Stale:      older than the user's refresh interval (5 min .. once a day).
- *  - Art:        bundled Dota 2 medals, optionally overridden by the user's imported pack.
+ *  - Art:        the bundled Dota 2 medals.
  */
 class DotaRankToyService : GlyphMatrixService("DotaRankToy") {
 
@@ -34,7 +35,7 @@ class DotaRankToyService : GlyphMatrixService("DotaRankToy") {
     private val renderer = RankRenderer()
     private val client = OpenDotaClient()
     private var store: RankStore? = null
-    private var iconPacks: IconPackStore? = null
+    private var medals: MedalArt? = null
     private var io: ExecutorService? = null
 
     private var loading = false
@@ -76,7 +77,7 @@ class DotaRankToyService : GlyphMatrixService("DotaRankToy") {
     override fun onMatrixConnected(context: Context, glyphMatrixManager: GlyphMatrixManager) {
         val s = RankStore(context)
         store = s
-        iconPacks = IconPackStore(context)
+        medals = BundledMedals.load(context)
         io = Executors.newSingleThreadExecutor()
         if (DISABLE_SYSTEM_TIMEOUT) {
             // Undocumented SDK 2.0 method; semantics unconfirmed, so off by default.
@@ -122,12 +123,9 @@ class DotaRankToyService : GlyphMatrixService("DotaRankToy") {
     private fun cachedMedal(): IntArray? {
         val s = store ?: return null
         return s.cachedForCurrentAccount()?.let {
-            renderer.render(it.player.state, activeIconPack(s), s.showImmortalRank)
+            renderer.render(it.player.state, medals, s.showImmortalRank)
         }
     }
-
-    /** Bundled Dota medals are the default; imported icons override them when selected. */
-    private fun activeIconPack(s: RankStore) = iconPacks?.displayPack(s.useIconPack)
 
     private fun refresh(force: Boolean) {
         val s = store ?: return

@@ -98,35 +98,35 @@ class RankRendererTest {
         }
     }
 
-    // --- icon pack mode (synthetic, fully lit icons) -------------------------------
+    // --- medal art (synthetic, fully lit frames) -----------------------------------
 
-    private val brightPack = IconPack(Medal.entries.associateWith { IntArray(625) { full } })
+    private val brightArt = MedalArt(Medal.entries.associateWith { IntArray(625) { full } })
 
-    @Test fun `pack icon plus one isolated pip per star`() {
+    @Test fun `medal art plus one isolated pip per star`() {
         for (stars in 0..7) {
-            val f = renderer.render(RankState.Ranked(Medal.GUARDIAN, stars), brightPack)
+            val f = renderer.render(RankState.Ranked(Medal.GUARDIAN, stars), brightArt)
             assertEquals("stars=$stars", stars, isolatedPips(f))
         }
     }
 
-    @Test fun `pack without stars shows the icon as is`() {
-        val icon = brightPack.iconFor(Medal.ARCHON)!!
-        assertTrue(renderer.render(RankState.Ranked(Medal.ARCHON, 0), brightPack).contentEquals(icon))
-        val immortal = brightPack.iconFor(Medal.IMMORTAL)!!
-        assertTrue(renderer.render(RankState.Immortal(null), brightPack).contentEquals(immortal))
-        assertTrue(renderer.render(RankState.Immortal(5), brightPack, showImmortalRank = false).contentEquals(immortal))
+    @Test fun `art without stars is shown as is`() {
+        val icon = brightArt.frameFor(Medal.ARCHON)!!
+        assertTrue(renderer.render(RankState.Ranked(Medal.ARCHON, 0), brightArt).contentEquals(icon))
+        val immortal = brightArt.frameFor(Medal.IMMORTAL)!!
+        assertTrue(renderer.render(RankState.Immortal(null), brightArt).contentEquals(immortal))
+        assertTrue(renderer.render(RankState.Immortal(5), brightArt, showImmortalRank = false).contentEquals(immortal))
     }
 
-    @Test fun `tiers missing from the pack and status screens use the built-in art`() {
-        val partial = IconPack(mapOf(Medal.HERALD to IntArray(625) { full }))
+    @Test fun `medals without art and status screens use the built-in emblem`() {
+        val partial = MedalArt(mapOf(Medal.HERALD to IntArray(625) { full }))
         val legend = RankState.Ranked(Medal.LEGEND, 2)
         assertTrue(renderer.render(legend, partial).contentEquals(renderer.render(legend)))
         assertTrue(renderer.render(RankState.Uncalibrated, partial).contentEquals(renderer.render(RankState.Uncalibrated)))
     }
 
-    @Test fun `pack frames stay inside the led circle`() {
+    @Test fun `art frames stay inside the led circle`() {
         for (state in allStates) {
-            val f = renderer.render(state, brightPack)
+            val f = renderer.render(state, brightArt)
             for (y in 0 until 25) for (x in 0 until 25) {
                 if (!MatrixLayout.isLed(x, y)) assertEquals(0, f[y * 25 + x])
             }
@@ -135,7 +135,7 @@ class RankRendererTest {
 
     // --- bundled Dota medal art ---------------------------------------------------
 
-    private val bundled = IconPack(IconPackParser.fromBitmapsJson(File("src/main/assets/dota_rank_medals.json").readText()))
+    private val bundled = MedalArt.fromJson(File("src/main/assets/dota_rank_medals.json").readText())
 
     @Test fun `bundled medals show exactly one lone led per star`() {
         // Regression: the pip band sliced a single LED off Guardian's wing, so rank 24
@@ -160,11 +160,11 @@ class RankRendererTest {
         val top = plateTop(f, "2488")
         assertEquals("plate sits on rows 17-21", 17, top)
         assertTrue(fitsOnLeds("2488", top!!))
-        assertUntouchedOutsidePlate(f, bundled.iconFor(Medal.IMMORTAL)!!, "2488", top)
+        assertUntouchedOutsidePlate(f, bundled.frameFor(Medal.IMMORTAL)!!, "2488", top)
     }
 
     @Test fun `setting off or no leaderboard place shows the immortal medal as is`() {
-        val medal = bundled.iconFor(Medal.IMMORTAL)!!
+        val medal = bundled.frameFor(Medal.IMMORTAL)!!
         assertTrue(renderer.render(zquixotix.state, bundled, showImmortalRank = false).contentEquals(medal))
         assertTrue(renderer.render(RankState.Immortal(null), bundled, showImmortalRank = true).contentEquals(medal))
     }

@@ -6,7 +6,7 @@ A Glyph Toy for the **Nothing Phone (3)** that shows your Dota 2 rank on the Gly
 
 ## Medal display
 
-- The eight grayscale Dota 2 medal icons are bundled in the app and used by default.
+- The eight grayscale Dota 2 medal images are bundled in the app (`assets/dota_rank_medals.json`).
 - Earned stars appear as small bright LEDs along the top of Herald through Divine medals.
 - **Show exact rank for Immortals** (on by default): the Immortal medal shows the leaderboard place (e.g. `2488`)
   on a dark plate in its lower part, when OpenDota returns one. Up to 5 digits fit.
@@ -15,19 +15,6 @@ A Glyph Toy for the **Nothing Phone (3)** that shows your Dota 2 rank on the Gly
 - **Errors** are only shown in the app. The Glyph (and the app preview) keep showing the last known medal.
 
 `rank_tier` decoding: tens digit = medal, ones digit = stars. Example: `24` → Guardian, 4 stars.
-
-## Optional custom icon packs
-
-Bundled Dota 2 medals work without importing anything. To use other artwork, import a custom pack on the settings screen and enable **Override with imported icon pack**.
-
-- **Zip contents:** `herald.png` … `immortal.png` (any name containing the medal name works, folders are fine)
-  and/or a `bitmaps.json` of the form `{"ranks": {"herald": [[25 rows × 25 values 0–255]], …}}`.
-  JSON wins where both exist; other files (README, preview images) are ignored.
-- **Images:** square, ideally 25×25, black = off, brighter = brighter LED. Other sizes are scaled down; transparency counts as off.
-- **Stars** are drawn as bright LEDs on a dark band cut into the top edge of the icon.
-- **Partial packs** are fine: missing medals use the bundled Dota 2 icons. Status screens (`ID`, `?`, spinner) use the built-in status style.
-- The pack is stored in the app's private storage (`files/icon_pack.json`) and never becomes part of the project or APK.
-  If your icons are someone else's artwork, keep them out of anything you publish.
 
 ## Setup
 
@@ -79,9 +66,9 @@ Custom URLs (`steamcommunity.com/id/<name>`) are detected but not resolved yet.
 | `data/OpenDotaClient.kt` | `GET /api/players/{id}` + JSON parsing |
 | `data/RankStore.kt` | Account ID, cached rank and settings (SharedPreferences) |
 | `data/RefreshInterval.kt` | Auto refresh interval limits (5 min … once a day) |
-| `glyph/` | Matrix geometry, 3×5 font, medal renderer, icon pack parser |
+| `glyph/` | Matrix geometry, 3×5 font, medal renderer, medal art parser |
 | `app/src/main/assets/dota_rank_medals.json` | Bundled grayscale medal images used by default |
-| `data/IconPackStore.kt` | Loads bundled medals and optional imported overrides |
+| `data/BundledMedals.kt` | Loads the bundled medal art |
 | `toy/GlyphMatrixService.kt` | Toy base class, adapted from Nothing's MIT example |
 | `toy/DotaRankToyService.kt` | The toy |
 | `toy/ReloadShake.kt` | The reload shake shared by the Glyph toy and the settings screen |
@@ -91,12 +78,12 @@ No AndroidX or Compose: the only dependency is the Glyph SDK, so the build stays
 
 ## Tests
 
-`./gradlew test` runs 62 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
+`./gradlew test` runs 56 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
 the OpenDota client against a local mock server (captured player responses in `app/src/test/resources/opendota/`;
 404, 429, 5xx, HTML/truncated bodies, timeouts, no connection, non-Latin names), auto refresh interval limits,
 matrix geometry, renderer checks (lit arcs = tier, one cross per star, nothing drawn outside the LED circle),
-and icon packs (zip/JSON parsing, size limits, masking, storage round trip, one clean star pip per star,
-including on the bundled medal art).
+the Immortal leaderboard plate, and the medal art (JSON parsing, masking, all 8 bundled medals present,
+one clean star pip per star on every bundled medal).
 
 ## Next steps: Steam URL / login
 
