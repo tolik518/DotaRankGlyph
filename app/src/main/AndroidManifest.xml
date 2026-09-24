@@ -30,6 +30,20 @@
             </intent-filter>
         </activity>
 
+        <!-- "Share" a Steam profile to the app. A separate component, so the setting
+             "Show in the share menu" can disable it without touching the launcher entry. -->
+        <activity-alias
+            android:name=".ui.ShareTarget"
+            android:exported="true"
+            android:label="@string/share_label"
+            android:targetActivity=".ui.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity-alias>
+
         <!-- The Glyph Toy -->
         <service
             android:name=".toy.DotaRankToyService"

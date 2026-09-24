@@ -3,4 +3,5 @@
     <string name="app_name">Dota Rank Glyph</string>
     <string name="toy_name">Dota Rank</string>
     <string name="toy_summary">Your Dota 2 rank on the Glyph Matrix. Long-press to refresh.</string>
+    <string name="share_label">Check Dota rank</string>
 </resources>

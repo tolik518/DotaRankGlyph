@@ -52,6 +52,20 @@ sealed interface PlayerInput {
             return Invalid("Not a friend ID, SteamID or profile URL")
         }
 
+        /**
+         * Text shared from another app ("Check out my profile: https://…"). Profile URLs are
+         * found anywhere in the text; otherwise the first word that is an ID wins.
+         */
+        fun fromSharedText(text: String): PlayerInput {
+            val whole = parse(text)
+            if (whole !is Invalid) return whole
+            return text.split(Regex("""\s+"""))
+                .map { it.trim('.', ',', ';', ':', '!', '?', '(', ')', '"', '\'') }
+                .map(::parse)
+                .firstOrNull { it !is Invalid }
+                ?: Invalid("No friend ID or Steam profile link in the shared text")
+        }
+
         private fun fromNumber(digits: String): PlayerInput {
             val n = digits.toLongOrNull() ?: return Invalid("Number is too long")
             return if (n >= STEAM_ID64_BASE) fromAccountId(n - STEAM_ID64_BASE) else fromAccountId(n)

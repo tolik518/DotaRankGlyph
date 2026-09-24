@@ -83,6 +83,7 @@ class DotaRankToyService : GlyphMatrixService("DotaRankToy") {
     override fun onMatrixConnected(context: Context, glyphMatrixManager: GlyphMatrixManager) {
         val repo = RankRepository.get(context)
         repository = repo
+        if (!repo.store.toyUsed) repo.store.toyUsed = true // no need to suggest adding the toy
         medals = BundledMedals.load(context)
         if (DISABLE_SYSTEM_TIMEOUT) {
             // Undocumented SDK 2.0 method; semantics unconfirmed, so off by default.

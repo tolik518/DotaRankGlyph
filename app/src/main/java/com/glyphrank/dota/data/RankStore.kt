@@ -80,6 +80,21 @@ class RankStore(context: Context) {
             .apply()
     }
 
+    /** Accounts checked successfully, newest first; see [RecentAccounts]. */
+    var recentAccounts: List<RecentAccounts.Entry>
+        get() = RecentAccounts.decode(prefs.getString(KEY_RECENT, null))
+        set(value) = prefs.edit().putString(KEY_RECENT, RecentAccounts.encode(value)).apply()
+
+    /** The toy has been on the Glyph at least once (so it has been added to the Glyph Toys). */
+    var toyUsed: Boolean
+        get() = prefs.getBoolean(KEY_TOY_USED, false)
+        set(value) = prefs.edit().putBoolean(KEY_TOY_USED, value).apply()
+
+    /** The one-time "Add to Glyph Toys" prompt was used or dismissed. */
+    var toyPromptDone: Boolean
+        get() = prefs.getBoolean(KEY_TOY_PROMPT_DONE, false)
+        set(value) = prefs.edit().putBoolean(KEY_TOY_PROMPT_DONE, value).apply()
+
     /** See [RefreshPolicy]. */
     var guard: GuardState
         get() = GuardState(
@@ -111,6 +126,9 @@ class RankStore(context: Context) {
         private const val KEY_RANK_TIER = "rank_tier"
         private const val KEY_LEADERBOARD = "leaderboard_rank"
         private const val KEY_FETCHED_AT = "fetched_at"
+        const val KEY_RECENT = "recent_accounts"
+        const val KEY_TOY_USED = "toy_used"
+        const val KEY_TOY_PROMPT_DONE = "toy_prompt_done"
         private const val KEY_ERROR = "last_error"
         private const val KEY_ERROR_AT = "last_error_at"
         private const val KEY_ERROR_ACCOUNT = "last_error_account_id"
@@ -123,6 +141,7 @@ class RankStore(context: Context) {
         private const val NONE = -1
 
         /** Bookkeeping keys that don't change what the Glyph shows. */
-        fun isBookkeeping(key: String?) = key != null && (key.startsWith("guard_") || key.startsWith("last_error"))
+        fun isBookkeeping(key: String?) = key != null &&
+            (key.startsWith("guard_") || key.startsWith("last_error") || key == KEY_RECENT || key.startsWith("toy_"))
     }
 }

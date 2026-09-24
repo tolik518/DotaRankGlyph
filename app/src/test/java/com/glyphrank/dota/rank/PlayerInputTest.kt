@@ -57,6 +57,15 @@ class PlayerInputTest {
         assertTrue(PlayerInput.parse("https://s.team/p/abc-xyz") is PlayerInput.Invalid) // a, x, y aren't code letters
     }
 
+    @Test fun `text shared from other apps`() {
+        assertEquals(PlayerInput.SteamVanity("Zeitboy"), PlayerInput.fromSharedText("Check out my profile: https://steamcommunity.com/id/Zeitboy/"))
+        assertEquals(zeitboy, PlayerInput.fromSharedText("Add me on Steam! https://s.team/p/djn-gfvm/QWERTYUI"))
+        assertEquals(zeitboy, PlayerInput.fromSharedText("my friend id is 40453096."))
+        assertEquals(zeitboy, PlayerInput.fromSharedText("\n 76561198000718824 \n"))
+        assertTrue(PlayerInput.fromSharedText("see you at 8 tonight") is PlayerInput.Account) // a number is a number
+        assertTrue(PlayerInput.fromSharedText("https://example.com/hello") is PlayerInput.Invalid)
+    }
+
     @Test fun `garbage is rejected`() {
         for (bad in listOf("", "   ", "abc", "0", "5000000000", "12ab34", "99999999999999999999999")) {
             assertTrue("expected Invalid for '$bad'", PlayerInput.parse(bad) is PlayerInput.Invalid)

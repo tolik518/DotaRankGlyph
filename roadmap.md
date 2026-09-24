@@ -4,7 +4,7 @@ Decisions from the review on 2026-09-25. Items are grouped by kind; the suggeste
 
 ## Fixes
 
-### 1. OpenDota rate-limit guard
+### 1. OpenDota rate-limit guard (done)
 Stop sending requests after a 429 until OpenDota's counter resets; today the toy retries about once a minute while the cached rank is stale.
 
 What OpenDota does (from its server code, `odota/core` `config.ts` / `svc/web.ts`, and live headers):
@@ -23,7 +23,7 @@ Plan:
 - Manual actions (button, long-press) also respect an active 429 block.
 - Tests with `MockHttpServer`: both 429 bodies, the remaining-day header, backoff timing (with an injectable clock).
 
-### 2. `RankRepository`
+### 2. `RankRepository` (done)
 One process-wide owner of fetching, instead of separate code in `MainActivity` and `DotaRankToyService`.
 - Owns `OpenDotaClient`, `RankStore`, the rate-limit guard (fix 1), and `ReloadShake` start/finish.
 - One in-flight request per account (a second caller joins it instead of sending another request).
@@ -33,7 +33,7 @@ One process-wide owner of fetching, instead of separate code in `MainActivity` a
 - The refresh decisions (stale / forced / too soon / blocked) move into a plain class so they can be unit-tested.
 - Move `ReloadShake` out of the `toy` package while at it (the app uses it too).
 
-### 3. Glyph service reconnects
+### 3. Glyph service reconnects (done, not provoked on the device)
 - If Nothing's Glyph service reconnects, `onMatrixConnected` runs again and creates a second executor without closing the first.
 - `onServiceDisconnected` is only logged, so the toy keeps sending frames to a dead connection.
 - Fix: make connect idempotent (reuse or close the executor), and handle disconnect like an unbind (stop animations, release the shake).
@@ -46,26 +46,27 @@ One process-wide owner of fetching, instead of separate code in `MainActivity` a
 
 ## Quality of life
 
-### 1. "Updated" time and last error in the app
+### 1. "Updated" time and last error in the app (done)
 - Status line such as "Updated 12 min ago", plus the last error if the latest refresh failed ("OpenDota unreachable, showing the rank from 14:02").
 - The Glyph never shows errors, so this is the only place to see that the rank is stale.
 - Store the last error and its time with the cached rank; clear it on the next success. Comes naturally from the repository's listeners (fix 2).
 
-### 2. Share into the app, with a setting to turn it off
+### 2. Share into the app, with a setting to turn it off (done)
 - "Share" a Steam profile from the Steam app or a browser → pick Dota Rank Glyph → the account is filled in (and checked).
 - Implementation: an `ACTION_SEND` (`text/plain`) intent filter on an `activity-alias`; the text goes through `PlayerInput.parse`, so every accepted format works.
 - Setting "Show in the share menu" (on by default): turning it off disables the alias with `PackageManager.setComponentEnabledSetting`, which removes the app from the share sheet.
 
-### 3. Paste button
+### 3. Paste button (done)
 - Next to the input field; reads the clipboard only when tapped (no background clipboard access, so Android shows no warning).
 
-### 4. Suggest adding the Glyph Toy
+### 4. Suggest adding the Glyph Toy (done)
 - After the first successful check, show a one-time prompt with a button that opens Nothing's Glyph Toys manager (`com.nothing.thirdparty/.matrix.toys.manager.ToysManagerActivity`, the intent Nothing recommends).
 - Don't show it again once it was used or dismissed. The existing "Add to Glyph Toys" button stays.
+- Also not shown once the toy has been on the Glyph (it must have been added then).
 
-### 5. Recent accounts
+### 5. Recent accounts (done)
 - Keep the last ~5 accounts with their persona names; tap one to switch (no re-entering IDs).
-- Switching uses the normal save & check path (cooldown, guard).
+- Switching uses the normal save & check path (cooldown, guard). Long-press removes an entry.
 
 ### 6. App icon, optionally the current medal
 - A proper launcher icon (adaptive icon) instead of the toy preview drawing.
@@ -90,7 +91,9 @@ One process-wide owner of fetching, instead of separate code in `MainActivity` a
 - **Last match W/L:** OpenDota's recent-matches endpoint; could be an alternative display (short `W` / `L` or a win streak).
 - **Friends rotation:** the toy cycles through saved players automatically (long-press is already used for refresh).
 - **Rank-change notification:** optional Android notification when the rank changes.
-- **Sign in with Steam** (OpenID): fills in the ID without pasting; needs a browser redirect back into the app. Later.
+- **Sign in with Steam** (OpenID 2.0): fills in the ID without pasting. The sign-in returns
+  `https://steamcommunity.com/openid/id/<SteamID64>`, which `PlayerInput.parse` already understands as a SteamID64;
+  needs a browser redirect back into the app. Later.
 
 ## Other cleanup (not decided yet)
 - Move user-facing texts from code into `strings.xml` (translations; the phone is set to German).

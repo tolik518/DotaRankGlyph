@@ -99,6 +99,9 @@ class RankRepository private constructor(context: Context) {
                 if (current) {
                     val previous = store.cachedForCurrentAccount()?.player
                     store.save(fetch.player, now)
+                    store.recentAccounts = RecentAccounts.add(
+                        store.recentAccounts, RecentAccounts.Entry(accountId, fetch.player.personaName),
+                    )
                     listeners.toList().forEach { it.onRankSaved(previous, fetch.player) }
                 }
             }

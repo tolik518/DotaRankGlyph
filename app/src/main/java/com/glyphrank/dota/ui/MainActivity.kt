@@ -3,13 +3,16 @@ package com.glyphrank.dota.ui
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
+import android.content.ClipboardManager
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
 import android.os.SystemClock
 import android.text.InputType
 import android.text.SpannableStringBuilder
+import android.text.TextUtils
 import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.View
@@ -27,6 +30,7 @@ import android.widget.TextView
 import android.widget.Toast
 import com.glyphrank.dota.data.BundledMedals
 import com.glyphrank.dota.data.RankRepository
+import com.glyphrank.dota.data.RecentAccounts
 import com.glyphrank.dota.data.RankStore
 import com.glyphrank.dota.data.RefreshInterval
 import com.glyphrank.dota.data.RefreshPolicy.Decision
@@ -84,6 +88,9 @@ class MainActivity : Activity() {
     private val cooldownOver = Runnable { updateCheckButton() }
 
     private lateinit var input: EditText
+    private lateinit var recentSection: LinearLayout
+    private lateinit var recentList: LinearLayout
+    private lateinit var toyPrompt: LinearLayout
     private lateinit var notice: TextView
     private lateinit var status: TextView
     private lateinit var preview: MatrixPreviewView
@@ -98,6 +105,12 @@ class MainActivity : Activity() {
         setUpIntervalPicker()
         store.accountId?.let { input.setText(it.toString()) }
         render()
+        if (savedInstanceState == null) handleShare(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleShare(intent)
     }
 
     override fun onStart() {
@@ -122,11 +135,46 @@ class MainActivity : Activity() {
 
     private fun saveAndCheck() {
         if (!checkButton.isEnabled) return // cooling down (the keyboard's Done key ends up here too)
-        when (val parsed = PlayerInput.parse(input.text.toString())) {
+        check(PlayerInput.parse(input.text.toString()))
+    }
+
+    private fun check(parsed: PlayerInput) {
+        when (parsed) {
             is PlayerInput.Invalid -> showNotice(parsed.reason, error = true)
             is PlayerInput.SteamVanity -> resolveThenFetch(parsed.vanityName)
             is PlayerInput.Account -> saveAndFetch(parsed.accountId)
         }
+    }
+
+    /** A Steam profile (or any text with an ID) shared from another app: fill it in and check it. */
+    private fun handleShare(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND) return
+        val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
+        val parsed = PlayerInput.fromSharedText(text)
+        fillInput(parsed, text)
+        if (parsed is PlayerInput.Invalid) showNotice(parsed.reason, error = true)
+        else if (checkButton.isEnabled) check(parsed)
+    }
+
+    /** Reads the clipboard only when the Paste button is tapped. */
+    private fun paste() {
+        val clipboard = getSystemService(ClipboardManager::class.java)
+        val text = clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
+        if (text.isNullOrBlank()) return showNotice("The clipboard is empty.")
+        fillInput(PlayerInput.fromSharedText(text), text)
+        showNotice(null)
+    }
+
+    /** Shows [parsed] in the input field in its shortest form, or the raw [text] if it didn't parse. */
+    private fun fillInput(parsed: PlayerInput, text: String) {
+        input.setText(
+            when (parsed) {
+                is PlayerInput.Account -> parsed.accountId.toString()
+                is PlayerInput.SteamVanity -> "steamcommunity.com/id/${parsed.vanityName}"
+                is PlayerInput.Invalid -> text.trim()
+            },
+        )
+        input.setSelection(input.text.length)
     }
 
     private fun saveAndFetch(accountId: Long) {
@@ -192,6 +240,34 @@ class MainActivity : Activity() {
         if (ReloadShake.isShaking) return // results appear once the shake has finished its cycle
         preview.frame = glyphFrame()
         status.text = statusText()
+        renderRecent()
+        toyPrompt.visibility =
+            if (store.cachedForCurrentAccount() != null && !store.toyUsed && !store.toyPromptDone) View.VISIBLE
+            else View.GONE
+    }
+
+    /** Recent accounts other than the current one; tap to switch, long-press to remove. */
+    private fun renderRecent() {
+        val others = store.recentAccounts.filter { it.accountId != store.accountId }
+        recentSection.visibility = if (others.isEmpty()) View.GONE else View.VISIBLE
+        recentList.removeAllViews()
+        for (entry in others) {
+            recentList.addView(text("${entry.name ?: "Player"}  ·  ${entry.accountId}", 15f, TEXT).apply {
+                setPadding(0, dp(10), 0, dp(10))
+                isSingleLine = true
+                ellipsize = TextUtils.TruncateAt.END
+                setOnClickListener {
+                    if (!checkButton.isEnabled) return@setOnClickListener
+                    input.setText(entry.accountId.toString())
+                    saveAndCheck()
+                }
+                setOnLongClickListener {
+                    store.recentAccounts = RecentAccounts.remove(store.recentAccounts, entry.accountId)
+                    renderRecent()
+                    true
+                }
+            })
+        }
     }
 
     private fun statusText(): CharSequence {
@@ -266,6 +342,19 @@ class MainActivity : Activity() {
 
     // --- preview ----------------------------------------------------------------
 
+    // --- share menu -------------------------------------------------------------
+
+    private val shareTarget get() = ComponentName(this, "com.glyphrank.dota.ui.ShareTarget")
+
+    private var showInShareMenu: Boolean
+        get() = packageManager.getComponentEnabledSetting(shareTarget) !=
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED // default: enabled in the manifest
+        set(value) = packageManager.setComponentEnabledSetting(
+            shareTarget,
+            if (value) PackageManager.COMPONENT_ENABLED_STATE_DEFAULT else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            PackageManager.DONT_KILL_APP,
+        )
+
     private fun openToyManager() {
         val intent = Intent().setComponent(
             ComponentName("com.nothing.thirdparty", "com.nothing.thirdparty.matrix.toys.manager.ToysManagerActivity"),
@@ -302,7 +391,16 @@ class MainActivity : Activity() {
                 if (action == EditorInfo.IME_ACTION_DONE) { saveAndCheck(); true } else false
             }
         }
-        column.addView(input)
+        val inputRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(input, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(Button(this@MainActivity).apply {
+                text = "Paste"
+                setOnClickListener { paste() }
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        column.addView(inputRow)
 
         checkButton = Button(this).apply {
             text = "Save & check rank"
@@ -313,8 +411,42 @@ class MainActivity : Activity() {
         notice = text("", 14f, TEXT).apply { visibility = View.GONE }
         column.addView(notice, spaced(top = 8))
 
+        recentSection = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        recentSection.addView(text("RECENT", 14f, TEXT, bold = true))
+        recentList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        recentSection.addView(recentList)
+        recentSection.addView(text("Tap to switch, long-press to remove.", 13f, MUTED))
+        column.addView(recentSection, spaced(top = 16))
+
         status = text("", 16f, TEXT)
         column.addView(status, spaced(top = 16, bottom = 16))
+
+        toyPrompt = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setBackgroundColor(Color.rgb(0x1C, 0x1C, 0x1C))
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            addView(text("Show this medal on the Glyph Matrix? Add Dota Rank to your Glyph Toys.", 14f, TEXT))
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(Button(this@MainActivity).apply {
+                    text = "Add to Glyph Toys"
+                    setOnClickListener {
+                        store.toyPromptDone = true
+                        render()
+                        openToyManager()
+                    }
+                })
+                addView(Button(this@MainActivity).apply {
+                    text = "Not now"
+                    setOnClickListener {
+                        store.toyPromptDone = true
+                        render()
+                    }
+                })
+            }, spaced(top = 8))
+        }
+        column.addView(toyPrompt, spaced(bottom = 16))
 
         preview = MatrixPreviewView(this)
         column.addView(preview, LinearLayout.LayoutParams(
@@ -353,6 +485,19 @@ class MainActivity : Activity() {
         }, spaced(top = 8))
         column.addView(text(
             "Immortal medals show the leaderboard place, e.g. 2488, when OpenDota has one.",
+            13f, MUTED,
+        ), spaced(top = 4))
+
+        column.addView(text("SHARING", 14f, TEXT, bold = true), spaced(top = 24))
+        column.addView(Switch(this).apply {
+            text = "Show in the share menu"
+            setTextColor(TEXT)
+            typeface = Typeface.MONOSPACE
+            isChecked = showInShareMenu
+            setOnCheckedChangeListener { _, checked -> showInShareMenu = checked }
+        }, spaced(top = 8))
+        column.addView(text(
+            "Share a Steam profile from the Steam app or a browser to Dota Rank Glyph to check it.",
             13f, MUTED,
         ), spaced(top = 4))
 
