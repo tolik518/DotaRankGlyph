@@ -12,6 +12,9 @@ A Glyph Toy for the **Nothing Phone (3)** that shows your Dota 2 rank on the Gly
   on a dark plate in its lower part, when OpenDota returns one. Up to 5 digits fit.
 - **Status:** `?` uncalibrated, `ID` no account set, spinner = loading the first rank.
   Reloading a known rank shakes the medal instead (always at least one full shake).
+- **Rank changes** are animated: a new star fades in and blinks, a new medal gets a light wave and sparkles, a lost
+  star fades out, a lower medal cross-fades, the Immortal place rolls to the new number. The app preview plays it in
+  step with the Glyph. A change found while the toy wasn't on the Glyph plays the next time it is selected.
 - **Errors** are only shown in the app. The Glyph (and the app preview) keep showing the last known medal.
 
 `rank_tier` decoding: tens digit = medal, ones digit = stars. Example: `24` → Guardian, 4 stars.
@@ -35,6 +38,10 @@ In the app:
   text) is filled in and checked. Turn off **Show in the share menu** to remove the app from the share sheet.
 - **Recent** lists the last 5 checked accounts: tap to switch, long-press to remove.
 - The status shows when the rank was last updated, and the last error in red if the latest check failed.
+- **App icon shows my medal** (off by default): the launcher icon becomes your current medal (Herald … Divine;
+  Immortal and uncalibrated use the default Immortal icon). Android can't set arbitrary launcher icons, so the
+  manifest has one launcher `activity-alias` per medal and `LauncherIcon` enables exactly one; it only switches
+  when the medal changes. Icons are generated from the medal art by `tools/make_icons.py`.
 
 In Dota 2, *Expose Public Match Data* must be enabled, otherwise OpenDota has no rank for you.
 
@@ -96,7 +103,9 @@ The state is stored with the settings, so it survives restarts.
 | `data/RankStore.kt` | Account ID, cached rank, last error, settings (SharedPreferences) |
 | `data/RecentAccounts.kt` | The recent accounts list |
 | `data/RefreshInterval.kt` | Auto refresh interval limits (5 min … once a day) |
-| `glyph/` | Matrix geometry, 3×5 font, medal renderer, medal art parser, shared reload shake |
+| `glyph/` | Matrix geometry, 3×5 font, medal renderer, medal art parser, shared reload shake, rank-change animation |
+| `data/LauncherIcon.kt` | Switches the launcher alias for "App icon shows my medal" |
+| `tools/make_icons.py` | Generates the launcher icons from the medal art |
 | `app/src/main/assets/dota_rank_medals.json` | Bundled grayscale medal images used by default |
 | `data/BundledMedals.kt` | Loads the bundled medal art |
 | `toy/GlyphMatrixService.kt` | Toy base class, adapted from Nothing's MIT example |
@@ -107,11 +116,12 @@ No AndroidX or Compose: the only dependency is the Glyph SDK, so the build stays
 
 ## Tests
 
-`./gradlew test` runs 87 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
+`./gradlew test` runs 97 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
 the OpenDota client and the Steam custom-URL lookup against a local mock server (captured player responses in `app/src/test/resources/opendota/`;
 404, minute/daily 429, rate-limit headers, 5xx, HTML/truncated bodies, timeouts, no connection, non-Latin names),
 the refresh policy (429 blocks until the UTC reset, low-quota pause, backoff, 5 s gap), shared-text parsing,
-the recent accounts list, auto refresh interval limits,
+the recent accounts list, the rank-change animations (start/end frames, star fade and blink, one flash,
+place roll), the launcher icon aliases, auto refresh interval limits,
 matrix geometry, renderer checks (lit arcs = tier, one cross per star, nothing drawn outside the LED circle),
 the Immortal leaderboard plate, and the medal art (JSON parsing, masking, all 8 bundled medals present,
 one clean star pip per star on every bundled medal).

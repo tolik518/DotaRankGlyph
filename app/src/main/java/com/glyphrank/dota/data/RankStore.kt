@@ -23,6 +23,11 @@ class RankStore(context: Context) {
         get() = prefs.getBoolean(KEY_SHOW_IMMORTAL_RANK, true)
         set(value) = prefs.edit().putBoolean(KEY_SHOW_IMMORTAL_RANK, value).apply()
 
+    /** The launcher icon shows the current medal ([LauncherIcon]). Off by default. */
+    var appIconShowsMedal: Boolean
+        get() = prefs.getBoolean(KEY_APP_ICON_MEDAL, false)
+        set(value) = prefs.edit().putBoolean(KEY_APP_ICON_MEDAL, value).apply()
+
     /** Automatic refresh interval for the toy, see [RefreshInterval]. */
     var refreshIntervalMinutes: Int
         get() = RefreshInterval.clamp(prefs.getInt(KEY_REFRESH_INTERVAL, RefreshInterval.DEFAULT_MINUTES))
@@ -147,6 +152,7 @@ class RankStore(context: Context) {
         const val KEY_ACCOUNT_ID = "account_id"
         const val KEY_REFRESH_INTERVAL = "refresh_interval_minutes"
         const val KEY_SHOW_IMMORTAL_RANK = "show_immortal_rank"
+        const val KEY_APP_ICON_MEDAL = "app_icon_shows_medal"
         private const val KEY_CACHED_ACCOUNT = "cached_account_id"
         private const val KEY_PERSONA = "persona_name"
         private const val KEY_RANK_TIER = "rank_tier"
@@ -172,6 +178,6 @@ class RankStore(context: Context) {
         /** Bookkeeping keys that don't change what the Glyph shows. */
         fun isBookkeeping(key: String?) = key != null &&
             (key.startsWith("guard_") || key.startsWith("last_error") || key == KEY_RECENT ||
-                key.startsWith("toy_") || key.startsWith("pending_"))
+                key.startsWith("toy_") || key.startsWith("pending_") || key == KEY_APP_ICON_MEDAL)
     }
 }

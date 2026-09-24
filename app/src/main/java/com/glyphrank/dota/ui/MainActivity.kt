@@ -501,6 +501,21 @@ class MainActivity : Activity() {
             13f, MUTED,
         ), spaced(top = 4))
 
+        column.addView(Switch(this).apply {
+            text = "App icon shows my medal"
+            setTextColor(TEXT)
+            typeface = Typeface.MONOSPACE
+            isChecked = store.appIconShowsMedal
+            setOnCheckedChangeListener { _, checked ->
+                store.appIconShowsMedal = checked
+                repository.updateLauncherIcon()
+            }
+        }, spaced(top = 16))
+        column.addView(text(
+            "The launcher icon changes to your current medal after each check (Immortal and uncalibrated use the default icon).",
+            13f, MUTED,
+        ), spaced(top = 4))
+
         column.addView(text("SHARING", 14f, TEXT, bold = true), spaced(top = 24))
         column.addView(Switch(this).apply {
             text = "Show in the share menu"

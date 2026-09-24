@@ -68,20 +68,23 @@ One process-wide owner of fetching, instead of separate code in `MainActivity` a
 - Keep the last ~5 accounts with their persona names; tap one to switch (no re-entering IDs).
 - Switching uses the normal save & check path (cooldown, guard). Long-press removes an entry.
 
-### 6. App icon, optionally the current medal
-- A proper launcher icon (adaptive icon) instead of the toy preview drawing.
+### 6. App icon, optionally the current medal (done)
+- A proper launcher icon (adaptive icon, with a themed-icon layer) instead of the toy preview drawing: the Immortal
+  medal as Glyph Matrix dots, generated from the medal art by `tools/make_icons.py`.
 - Setting "App icon shows my medal" (off by default): the launcher icon changes to the current medal after each refresh.
 - Android can't set arbitrary launcher bitmaps. The usual approach is one `activity-alias` per icon (8 medals + uncalibrated), enabling one and disabling the others with `PackageManager.setComponentEnabledSetting`. Stars can't be shown (that would need 40 aliases).
+  Immortal and uncalibrated use the default icon, so there are 8 aliases (default + Herald … Divine).
 - To check on the Nothing launcher: whether it refreshes the icon promptly, and whether switching aliases removes home-screen shortcuts or restarts the app. Only switch when the medal actually changes.
 
 ## Features
 
-### 1. Rank-change animation on the Glyph
+### 1. Rank-change animation on the Glyph (done)
 - When a refresh brings a different rank, play an animation instead of just swapping the frame:
   - **New star:** the new pip fades or blinks in.
   - **New medal (tier up):** a flash or sparkle over the new medal.
   - **Rank down:** a quieter version (e.g. the lost pip fades out).
-  - **Immortal leaderboard place changed:** the number rolls to the new value.
+  - **Immortal leaderboard place changed:** the number rolls to the new value, then blinks twice.
+  - Anything else (lower medal, back to uncalibrated): cross-fade.
 - Compare the previous cached rank with the new one inside the repository (fix 2), which notifies with old and new state.
 - If the toy isn't showing at that moment, store a "pending celebration" and play it the next time the toy is selected.
 - The app preview plays the same animation (like the shared reload shake).

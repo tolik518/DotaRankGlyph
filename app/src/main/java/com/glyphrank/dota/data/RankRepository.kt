@@ -108,6 +108,7 @@ class RankRepository private constructor(private val context: Context) {
                     )
                     listeners.toList().forEach { it.onRankSaved(previous, fetch.player) }
                     if (previous != null) celebrate(previous, fetch.player)
+                    if (store.appIconShowsMedal) updateLauncherIcon()
                 }
             }
             .onFailure { e ->
@@ -117,6 +118,12 @@ class RankRepository private constructor(private val context: Context) {
             }
         shakeToken?.let(ReloadShake::finish) // the shake still finishes its cycle
         notifyState()
+    }
+
+    /** Points the launcher icon at the current medal (or the default icon if the setting is off). */
+    fun updateLauncherIcon() {
+        runCatching { LauncherIcon.update(context, store.cachedForCurrentAccount()?.player?.state, store.appIconShowsMedal) }
+            .onFailure { Log.w(TAG, "Launcher icon update failed", it) }
     }
 
     private val animation = RankAnimation()
