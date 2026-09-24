@@ -28,6 +28,7 @@ import com.glyphrank.dota.data.OpenDotaClient
 import com.glyphrank.dota.data.PlayerRank
 import com.glyphrank.dota.data.RankStore
 import com.glyphrank.dota.data.RefreshInterval
+import com.glyphrank.dota.data.SteamProfileResolver
 import com.glyphrank.dota.glyph.MedalArt
 import com.glyphrank.dota.glyph.RankRenderer
 import com.glyphrank.dota.rank.PlayerInput
@@ -44,6 +45,7 @@ class MainActivity : Activity() {
     private var currentPlayer: PlayerRank? = null
     private val renderer = RankRenderer()
     private val client = OpenDotaClient()
+    private val steam = SteamProfileResolver()
     private val io: ExecutorService = Executors.newSingleThreadExecutor()
 
     /** Medal being shaken in the preview, in step with the Glyph; null when idle. */
@@ -135,24 +137,47 @@ class MainActivity : Activity() {
         if (!checkButton.isEnabled) return // cooling down (the keyboard's Done key ends up here too)
         when (val parsed = PlayerInput.parse(input.text.toString())) {
             is PlayerInput.Invalid -> showError(parsed.reason)
-            is PlayerInput.SteamVanity -> showError(
-                "Custom Steam URLs (/id/${parsed.vanityName}) aren't supported yet. " +
-                    "Paste your friend ID, SteamID64 or a steamcommunity.com/profiles/… link.",
-            )
-            is PlayerInput.Account -> {
-                store.accountId = parsed.accountId
-                input.setText(parsed.accountId.toString())
-                fetch(parsed.accountId)
+            is PlayerInput.SteamVanity -> resolveThenFetch(parsed.vanityName)
+            is PlayerInput.Account -> saveAndFetch(parsed.accountId)
+        }
+    }
+
+    private fun saveAndFetch(accountId: Long) {
+        store.accountId = accountId
+        input.setText(accountId.toString())
+        fetch(accountId)
+    }
+
+    /** steamcommunity.com/id/<name>: one Steam lookup, then the account ID is stored like any other. */
+    private fun resolveThenFetch(vanityName: String) {
+        startCooldown()
+        status.setTextColor(TEXT)
+        status.text = "Looking up steamcommunity.com/id/$vanityName…"
+        io.execute {
+            val result = runCatching { steam.resolveVanity(vanityName) }
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                result
+                    .onSuccess { accountId -> saveAndFetch(accountId) }
+                    .onFailure {
+                        fetching = false
+                        updateCheckButton()
+                        showError(it.message ?: "Steam lookup failed")
+                    }
             }
         }
     }
 
-    private fun fetch(accountId: Long) {
+    private fun startCooldown() {
         fetching = true
         cooldownUntil = SystemClock.elapsedRealtime() + CHECK_COOLDOWN_MS
         checkButton.removeCallbacks(cooldownOver)
         checkButton.postDelayed(cooldownOver, CHECK_COOLDOWN_MS)
         updateCheckButton()
+    }
+
+    private fun fetch(accountId: Long) {
+        startCooldown()
         status.setTextColor(TEXT)
         status.text = "Checking OpenDota for $accountId…"
         if (currentPlayer?.accountId == accountId) {
@@ -264,7 +289,7 @@ class MainActivity : Activity() {
         column.addView(text("Glyph Toy for Nothing Phone (3)", 14f, MUTED), spaced(bottom = 24))
 
         input = EditText(this).apply {
-            hint = "Friend ID, SteamID64 or profile URL"
+            hint = "Friend ID or Steam profile link"
             setHintTextColor(MUTED)
             setTextColor(TEXT)
             typeface = Typeface.MONOSPACE

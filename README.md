@@ -31,9 +31,15 @@ In Dota 2, *Expose Public Match Data* must be enabled, otherwise OpenDota has no
 
 ### Accepted input
 
-Friend ID (`40453096`), SteamID64 (`76561198000718824`), `STEAM_0:0:20226548`, `[U:1:40453096]`,
-`steamcommunity.com/profiles/<id64>`, and `opendota.com` / `dotabuff.com` / `stratz.com` `/players/<id>` links.
-Custom URLs (`steamcommunity.com/id/<name>`) are detected but not resolved yet.
+Decoded on the phone, no network needed:
+friend ID (`40453096`), SteamID64 (`76561198000718824`), `STEAM_0:0:20226548`, `[U:1:40453096]`,
+`steamcommunity.com/profiles/<id64>`, `opendota.com` / `dotabuff.com` / `stratz.com` `/players/<id>` links, and
+Steam friend-code links (`s.team/p/djn-gfvm`, quick-invite links with a token, `steamcommunity.com/user/djn-gfvm`).
+
+Custom profile URLs (`steamcommunity.com/id/<name>`) are looked up once, when you save them, through the profile's
+public XML view (`/id/<name>/?xml=1`, falling back to the profile page); no Steam Web API key is needed. The account ID
+is then stored, so Steam isn't asked again. Steam throttles anonymous lookups without documenting the limits; if it
+answers 429, the app says so and doesn't retry.
 
 ## Behaviour
 
@@ -63,6 +69,7 @@ Custom URLs (`steamcommunity.com/id/<name>`) are detected but not resolved yet.
 |---|---|
 | `rank/Rank.kt` | `rank_tier` → `RankState` (medal + stars / Immortal / uncalibrated) |
 | `rank/PlayerInput.kt` | Parses IDs and profile URLs into an account ID |
+| `data/SteamProfileResolver.kt` | Looks up custom Steam URLs (`/id/<name>`) without an API key |
 | `data/OpenDotaClient.kt` | `GET /api/players/{id}` + JSON parsing |
 | `data/RankStore.kt` | Account ID, cached rank and settings (SharedPreferences) |
 | `data/RefreshInterval.kt` | Auto refresh interval limits (5 min … once a day) |
@@ -78,18 +85,15 @@ No AndroidX or Compose: the only dependency is the Glyph SDK, so the build stays
 
 ## Tests
 
-`./gradlew test` runs 56 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
-the OpenDota client against a local mock server (captured player responses in `app/src/test/resources/opendota/`;
+`./gradlew test` runs 65 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
+the OpenDota client and the Steam custom-URL lookup against a local mock server (captured player responses in `app/src/test/resources/opendota/`;
 404, 429, 5xx, HTML/truncated bodies, timeouts, no connection, non-Latin names), auto refresh interval limits,
 matrix geometry, renderer checks (lit arcs = tier, one cross per star, nothing drawn outside the LED circle),
 the Immortal leaderboard plate, and the medal art (JSON parsing, masking, all 8 bundled medals present,
 one clean star pip per star on every bundled medal).
 
-## Next steps: Steam URL / login
+## Next steps: Steam login
 
-- **Custom Steam URL:** resolve `/id/<name>` to a SteamID64 with Steam's
-  `ISteamUser/ResolveVanityURL` Web API (needs a free Steam Web API key), then subtract
-  `76561197960265728` to get the account ID. The parser already returns `PlayerInput.SteamVanity` for this.
 - **Steam login:** Steam's OpenID 2.0 sign-in returns `https://steamcommunity.com/openid/id/<SteamID64>`;
   feed that ID into `PlayerInput.parse`. Needs a browser redirect back into the app.
 

@@ -46,6 +46,17 @@ class PlayerInputTest {
         assertEquals(PlayerInput.SteamVanity("player4"), PlayerInput.parse("https://steamcommunity.com/id/player4/"))
     }
 
+    @Test fun `steam friend-code links are decoded offline`() {
+        // Codes checked against Steam: steamcommunity.com/user/djn-gfvm redirects to /id/Zeitboy,
+        // /user/djnh-kcm to /profiles/76561198000723736 (account 40458008).
+        assertEquals(zeitboy, PlayerInput.parse("https://s.team/p/djn-gfvm"))
+        assertEquals(zeitboy, PlayerInput.parse("https://s.team/p/djn-gfvm/QWERTYUI")) // quick invite with token
+        assertEquals(zeitboy, PlayerInput.parse("steamcommunity.com/user/djn-gfvm/"))
+        assertEquals(zeitboy, PlayerInput.parse("https://s.team/p/DJNGFVM")) // case and dash don't matter
+        assertEquals(PlayerInput.Account(40458008), PlayerInput.parse("https://steamcommunity.com/user/djnh-kcm"))
+        assertTrue(PlayerInput.parse("https://s.team/p/abc-xyz") is PlayerInput.Invalid) // a, x, y aren't code letters
+    }
+
     @Test fun `garbage is rejected`() {
         for (bad in listOf("", "   ", "abc", "0", "5000000000", "12ab34", "99999999999999999999999")) {
             assertTrue("expected Invalid for '$bad'", PlayerInput.parse(bad) is PlayerInput.Invalid)
