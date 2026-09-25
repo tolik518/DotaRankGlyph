@@ -10,21 +10,27 @@ import android.util.Log
 import com.glyphrank.dota.data.RankRepository
 import com.glyphrank.dota.data.RankStore
 import com.glyphrank.dota.data.RefreshInterval
-import com.glyphrank.dota.data.RefreshPolicy.Decision
 
 /**
- * Refreshes the rank in the background while a home-screen widget exists, at the Auto refresh
- * interval (at least every 15 min, Android's minimum). Goes through [RankRepository], so the
- * rate-limit rules apply and the toy and the widget never both fetch.
+ * Background fetches, as jobs because Android blocks this app's network in the background
+ * except while one of its jobs runs:
+ *
+ *  - Periodic ([schedule]): refreshes the rank while a home-screen widget exists, at the Auto
+ *    refresh interval (at least every 15 min, Android's minimum).
+ *  - Once, expedited ([scheduleFetchNow]): sends a request that [RankRepository] queued
+ *    because the app had no network (e.g. a Glyph long-press with the app closed).
+ *
+ * Both go through [RankRepository], so the rate-limit rules apply and nothing fetches twice.
  */
 class RankRefreshJob : JobService() {
     private var waiting: RankRepository.Listener? = null
 
     override fun onStartJob(params: JobParameters): Boolean {
         val repo = RankRepository.get(this)
-        val decision = repo.refresh(manual = false)
-        Log.d(TAG, "Widget refresh: $decision")
-        if (decision != Decision.Fetch && decision != Decision.Joined) return false
+        // Both jobs may use the network while they run, even with the app in the background.
+        val running = repo.runQueuedFetch()
+        Log.d(TAG, "Job ${params.jobId}: ${if (running) "fetching" else "nothing to fetch"}")
+        if (!running) return false
         val listener = object : RankRepository.Listener {
             override fun onStateChanged() {
                 if (repo.isLoading) return
@@ -47,6 +53,23 @@ class RankRefreshJob : JobService() {
     companion object {
         private const val TAG = "RankRefreshJob"
         private const val JOB_ID = 4045
+        private const val FETCH_NOW_JOB_ID = 4046
+
+        /** Runs a queued request as soon as the network may be used (right away if online). */
+        fun scheduleFetchNow(context: Context) {
+            val scheduler = context.getSystemService(JobScheduler::class.java) ?: return
+            val component = ComponentName(context, RankRefreshJob::class.java)
+            fun job(expedited: Boolean) = JobInfo.Builder(FETCH_NOW_JOB_ID, component)
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                .setExpedited(expedited)
+                .build()
+            // Expedited jobs start within seconds but have a quota; fall back to a normal job.
+            val result = runCatching { scheduler.schedule(job(expedited = true)) }.getOrDefault(JobScheduler.RESULT_FAILURE)
+            if (result == JobScheduler.RESULT_SUCCESS) return
+            Log.w(TAG, "Expedited job refused, scheduling a normal one")
+            runCatching { scheduler.schedule(job(expedited = false)) }
+                .onFailure { Log.w(TAG, "Could not schedule the fetch job", it) }
+        }
 
         /** Schedules (or re-times) the periodic refresh; keeps a pending job with the same interval. */
         fun schedule(context: Context) {

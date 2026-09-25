@@ -1,6 +1,7 @@
 package com.glyphrank.dota.data
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.util.Log
 import com.glyphrank.dota.data.RefreshPolicy.Decision
 import com.glyphrank.dota.glyph.MedalArt
@@ -10,6 +11,7 @@ import com.glyphrank.dota.glyph.ReloadShake
 import com.glyphrank.dota.rank.RankState
 import com.glyphrank.dota.util.MainThread
 import com.glyphrank.dota.util.Scheduler
+import com.glyphrank.dota.widget.RankRefreshJob
 import com.glyphrank.dota.widget.RankWidget
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
@@ -25,6 +27,9 @@ import java.util.concurrent.Executors
  *  - Manual reloads shake the last known medal via [ReloadShake] until the request is done.
  *  - A changed rank plays [RankAnimation] via [RankCelebration]; if the toy isn't on the
  *    Glyph, the change is kept for [playPendingCelebration].
+ *  - In the background Android blocks this app's network (Android 15 "APP_BACKGROUND"), e.g.
+ *    when the Glyph toy refreshes while the app isn't open. Then the request is queued and
+ *    sent from a job ([runQueuedFetch]), which Android lets use the network.
  */
 class RankRepository internal constructor(
     val store: RankStore,
@@ -37,6 +42,10 @@ class RankRepository internal constructor(
     private val applyLauncherIcon: (RankState?, Boolean) -> Unit,
     /** Redraws the home-screen widgets from the store. */
     private val updateWidgets: () -> Unit = {},
+    /** False when the app can't use the network right now (blocked in the background, or offline). */
+    private val canUseNetworkNow: () -> Boolean = { true },
+    /** Schedules a job that calls [runQueuedFetch] as soon as it may use the network. */
+    private val scheduleBackgroundFetch: () -> Unit = {},
 ) {
     interface Listener {
         /** A refresh saved a rank. [previous] is the last known rank of the same account, if any. */
@@ -50,6 +59,17 @@ class RankRepository internal constructor(
 
     /** Running requests by account ID; the value is the shake token, if the request shakes. */
     private val inFlight = HashMap<Long, Int?>()
+
+    /** An account whose request waits for the background job (see [runQueuedFetch]). */
+    private var queued: Long? = null
+
+    /** Gives up waiting for the job (no connection); the job still fetches once it runs. */
+    private val queueTimeout = Runnable {
+        val accountId = queued ?: return@Runnable
+        queued = null
+        Log.w(TAG, "No network for $accountId within ${QUEUE_TIMEOUT_MS / 1000} s")
+        onFetched(accountId, Result.failure(OpenDotaException(OpenDotaException.Kind.NETWORK, "No internet connection")))
+    }
 
     fun addListener(listener: Listener) {
         listeners += listener
@@ -77,7 +97,25 @@ class RankRepository internal constructor(
      * [manual]: the user asked (button, long-press); ignores the refresh interval and shakes
      * the last known medal while loading.
      */
-    fun refresh(manual: Boolean): Decision {
+    fun refresh(manual: Boolean): Decision = refresh(manual, fromJob = false)
+
+    /**
+     * Called by the background job: sends a queued request, or does a normal automatic
+     * refresh. Returns true if a request is running (the job waits for it).
+     */
+    fun runQueuedFetch(): Boolean {
+        main.remove(queueTimeout)
+        val accountId = queued
+        if (accountId != null) {
+            queued = null
+            startFetch(accountId, manual = true)
+            return true
+        }
+        val decision = refresh(manual = false, fromJob = true)
+        return decision == Decision.Fetch || decision == Decision.Joined
+    }
+
+    private fun refresh(manual: Boolean, fromJob: Boolean): Decision {
         val accountId = store.accountId ?: return Decision.NoAccount
         val cached = store.cachedForCurrentAccount()
         val shake = manual && cached != null
@@ -94,15 +132,29 @@ class RankRepository internal constructor(
             return decision
         }
 
-        Log.d(TAG, "Fetching $accountId (${if (manual) "manual" else "auto"})")
-        store.guard = RefreshPolicy.attempt(store.guard, accountId, now)
         inFlight[accountId] = if (shake) ReloadShake.start() else null
+        if (fromJob || canUseNetworkNow()) {
+            startFetch(accountId, manual)
+        } else {
+            // Blocked in the background (or offline): let a job send it.
+            Log.d(TAG, "No network for the app right now; queueing $accountId for a job")
+            store.guard = RefreshPolicy.attempt(store.guard, accountId, now) // counts for gap and backoff
+            queued = accountId
+            main.remove(queueTimeout)
+            main.postDelayed(queueTimeout, QUEUE_TIMEOUT_MS)
+            scheduleBackgroundFetch()
+        }
+        notifyState()
+        return decision
+    }
+
+    private fun startFetch(accountId: Long, manual: Boolean) {
+        Log.d(TAG, "Fetching $accountId (${if (manual) "manual" else "auto"})")
+        store.guard = RefreshPolicy.attempt(store.guard, accountId, clock())
         io.execute {
             val result = runCatching { client.fetch(accountId) }
             main.post { onFetched(accountId, result) }
         }
-        notifyState()
-        return decision
     }
 
     private fun onFetched(accountId: Long, result: Result<PlayerFetch>) {
@@ -125,7 +177,7 @@ class RankRepository internal constructor(
                 }
             }
             .onFailure { e ->
-                Log.w(TAG, "Rank refresh failed: ${e.message}")
+                Log.w(TAG, "Rank refresh failed: ${e.message} (cause: ${e.cause})")
                 store.guard = RefreshPolicy.afterFailure(store.guard, e, now)
                 if (current) store.saveError(accountId, e.message ?: "Lookup failed", now, (e as? OpenDotaException)?.kind?.name)
             }
@@ -175,6 +227,9 @@ class RankRepository internal constructor(
     companion object {
         private const val TAG = "RankRepository"
 
+        /** How long a queued request waits for its job before it counts as failed. */
+        const val QUEUE_TIMEOUT_MS = 20_000L
+
         private fun create(app: Context) = RankRepository(
             store = RankStore(app),
             client = OpenDotaClient(),
@@ -184,6 +239,9 @@ class RankRepository internal constructor(
             medals = { BundledMedals.load(app) },
             applyLauncherIcon = { state, showMedal -> LauncherIcon.update(app, state, showMedal) },
             updateWidgets = { RankWidget.updateAll(app) },
+            // getActiveNetwork() is null when there is no network *or* this app's network is blocked.
+            canUseNetworkNow = { app.getSystemService(ConnectivityManager::class.java)?.activeNetwork != null },
+            scheduleBackgroundFetch = { RankRefreshJob.scheduleFetchNow(app) },
         )
 
         @Volatile private var instance: RankRepository? = null

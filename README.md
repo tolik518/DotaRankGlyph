@@ -54,7 +54,7 @@ There is no download or store listing yet. For now the app has to be built from 
 ## Getting started
 
 1. Open **Dota Rank Glyph** and enter your account: your Dota friend ID (e.g. `40453096`) or your Steam profile
-   link. Or tap **Paste**, or share your profile from the Steam app. Then tap **Save & check rank**.
+   link. Or share your profile from the Steam app with the App. Then tap **Save & check rank**.
 2. Tap **Add to Glyph Toys** and move **Dota Rank** to the active toys
    (or go to Settings → Glyph Interface → Glyph Toys).
 3. Short-press the Glyph Button until your medal appears. Long-press it to refresh.

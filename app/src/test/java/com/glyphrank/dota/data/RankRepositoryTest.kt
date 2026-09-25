@@ -28,6 +28,9 @@ class RankRepositoryTest {
     private var now = 1_790_344_800_000L // 2026-09-25 14:00 UTC
     private val launcherIcons = mutableListOf<Pair<RankState?, Boolean>>()
     private var widgetUpdates = 0
+    /** False = Android blocks the app's network (in the background) or the phone is offline. */
+    private var networkNow = true
+    private var jobsScheduled = 0
     private val store = RankStore(FakeSharedPreferences())
     private val repo = RankRepository(
         store = store,
@@ -38,6 +41,8 @@ class RankRepositoryTest {
         medals = { null },
         applyLauncherIcon = { state, show -> launcherIcons += state to show },
         updateWidgets = { widgetUpdates++ },
+        canUseNetworkNow = { networkNow },
+        scheduleBackgroundFetch = { jobsScheduled++ },
     )
 
     private val zeitboy = 40453096L
@@ -180,6 +185,53 @@ class RankRepositoryTest {
         assertNull(store.cachedFor(zeitboy))
         assertNull(store.cachedForCurrentAccount())
         assertTrue(saved.isEmpty())
+    }
+
+    // --- network blocked in the background ------------------------------------------------
+
+    @Test fun `without network the request waits for the job, still shaking`() {
+        check()
+        finishRequests()
+        networkNow = false
+        now += 10_000
+        assertEquals(Decision.Fetch, repo.refresh(manual = true))
+        assertEquals(1, jobsScheduled)
+        assertTrue(repo.isLoading)
+        main.advanceBy(500)
+        assertTrue(ReloadShake.isShaking)
+        finishRequests()
+        assertEquals(1, server.requests.size) // nothing sent yet
+        assertEquals(Decision.Joined, repo.refresh(manual = true)) // a second press joins it
+
+        assertTrue(repo.runQueuedFetch()) // the job runs; it may use the network
+        finishRequests()
+        assertEquals(2, server.requests.size)
+        assertFalse(repo.isLoading)
+        assertNull(store.lastError)
+        main.advanceBy(1_000)
+        assertFalse(ReloadShake.isShaking)
+    }
+
+    @Test fun `a job that doesn't start in time counts as no connection`() {
+        networkNow = false
+        check()
+        main.advanceBy(RankRepository.QUEUE_TIMEOUT_MS)
+        assertFalse(repo.isLoading)
+        assertEquals("No internet connection", store.lastErrorForCurrentAccount()?.message)
+        assertEquals(0, server.requests.size)
+        // When the job finally runs, it does a normal refresh (here: still backing off).
+        assertFalse(repo.runQueuedFetch())
+        assertEquals(0, server.requests.size)
+    }
+
+    @Test fun `the job's own refresh doesn't wait for itself`() {
+        networkNow = false // the check below doesn't matter inside a job
+        repo.setAccount(zeitboy)
+        assertTrue(repo.runQueuedFetch())
+        finishRequests()
+        assertEquals(1, server.requests.size)
+        assertEquals(0, jobsScheduled)
+        assertEquals(24, store.cachedForCurrentAccount()?.player?.rankTier)
     }
 
     // --- shake, animation, icon ------------------------------------------------------------

@@ -344,7 +344,7 @@ class MainActivity : Activity() {
         if (cached != null) {
             val player = cached.player
             text.append(player.personaName ?: "Player ${player.accountId}").append('\n')
-            text.append("${RankTier.describe(player.state)}  (rank_tier ${player.rankTier ?: "none"})\n")
+            text.append("${RankTier.describe(player.state)}\n")
             val age = "Updated ${TimeText.ago(cached.fetchedAtMs, now)}" +
                 if (repository.isLoading) " · checking…" else ""
             text.append(age, ForegroundColorSpan(MUTED), 0)
