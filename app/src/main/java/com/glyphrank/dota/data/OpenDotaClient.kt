@@ -6,6 +6,7 @@ import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
 
 data class PlayerRank(
@@ -64,10 +65,17 @@ object OpenDotaParser {
         if (!has(key) || isNull(key)) null else optString(key)
 }
 
-/** Minimal client for the free OpenDota tier (currently ~60 requests/min, 3000/day). */
+/**
+ * Minimal client for the free OpenDota tier (currently ~60 requests/min, 3000/day).
+ *
+ * The player endpoint can be slow under load (measured 12–38 s to the first byte while
+ * `/health` answered in under a second), so the read timeout is much longer than the
+ * connect timeout.
+ */
 class OpenDotaClient(
     private val baseUrl: String = "https://api.opendota.com/api",
-    private val timeoutMs: Int = 10_000,
+    private val connectTimeoutMs: Int = 10_000,
+    private val readTimeoutMs: Int = 45_000,
 ) {
     /** Blocking call — run it off the main thread. */
     fun fetchPlayer(accountId: Long): PlayerRank = fetch(accountId).player
@@ -76,8 +84,8 @@ class OpenDotaClient(
     fun fetch(accountId: Long): PlayerFetch {
         val connection = try {
             (URL("$baseUrl/players/$accountId").openConnection() as HttpURLConnection).apply {
-                connectTimeout = timeoutMs
-                readTimeout = timeoutMs
+                connectTimeout = connectTimeoutMs
+                readTimeout = readTimeoutMs
                 setRequestProperty("Accept", "application/json")
                 setRequestProperty("User-Agent", "DotaRankGlyph/0.1 (Nothing Phone 3 Glyph Toy)")
             }
@@ -96,6 +104,14 @@ class OpenDotaClient(
                 OpenDotaParser.parsePlayer(accountId, body),
                 remainingMinute = connection.getHeaderField("X-Rate-Limit-Remaining-Minute")?.trim()?.toIntOrNull(),
                 remainingDay = connection.getHeaderField("X-Rate-Limit-Remaining-Day")?.trim()?.toIntOrNull(),
+            )
+        } catch (e: SocketTimeoutException) {
+            // Connected, but no answer in time: OpenDota is overloaded, not the phone offline.
+            val connecting = e.message?.startsWith("failed to connect") == true
+            throw OpenDotaException(
+                OpenDotaException.Kind.NETWORK,
+                if (connecting) "Could not reach OpenDota" else "OpenDota is slow to answer right now",
+                e,
             )
         } catch (e: IOException) {
             throw OpenDotaException(OpenDotaException.Kind.NETWORK, "Could not reach OpenDota", e)

@@ -34,7 +34,7 @@ class RankRepositoryTest {
     private val store = RankStore(FakeSharedPreferences())
     private val repo = RankRepository(
         store = store,
-        client = OpenDotaClient(baseUrl = "${server.baseUrl}/api", timeoutMs = 2_000),
+        client = OpenDotaClient(baseUrl = "${server.baseUrl}/api", connectTimeoutMs = 2_000, readTimeoutMs = 2_000),
         io = io,
         main = main,
         clock = { now },

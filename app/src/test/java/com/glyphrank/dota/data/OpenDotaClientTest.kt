@@ -17,7 +17,7 @@ import java.net.ServerSocket
  */
 class OpenDotaClientTest {
     private val server = MockHttpServer()
-    private val client = OpenDotaClient(baseUrl = "${server.baseUrl}/api", timeoutMs = 2_000)
+    private val client = OpenDotaClient(baseUrl = "${server.baseUrl}/api", connectTimeoutMs = 2_000, readTimeoutMs = 2_000)
 
     @After fun stopServer() = server.close()
 
@@ -117,14 +117,16 @@ class OpenDotaClientTest {
 
     @Test fun `slow server times out as a network error`() {
         server.handler = { Response(200, fixture(105013326), delayMs = 1_500) }
-        val impatient = OpenDotaClient(baseUrl = "${server.baseUrl}/api", timeoutMs = 300)
-        expectError(OpenDotaException.Kind.NETWORK) { impatient.fetchPlayer(105013326) }
+        val impatient = OpenDotaClient(baseUrl = "${server.baseUrl}/api", connectTimeoutMs = 300, readTimeoutMs = 300)
+        val e = expectError(OpenDotaException.Kind.NETWORK) { impatient.fetchPlayer(105013326) }
+        assertEquals("OpenDota is slow to answer right now", e.message)
     }
 
     @Test fun `unreachable server is a network error`() {
         val closedPort = ServerSocket(0).use { it.localPort } // nothing listens here any more
-        val offline = OpenDotaClient(baseUrl = "http://127.0.0.1:$closedPort/api", timeoutMs = 2_000)
-        expectError(OpenDotaException.Kind.NETWORK) { offline.fetchPlayer(105013326) }
+        val offline = OpenDotaClient(baseUrl = "http://127.0.0.1:$closedPort/api", connectTimeoutMs = 2_000)
+        val e = expectError(OpenDotaException.Kind.NETWORK) { offline.fetchPlayer(105013326) }
+        assertEquals("Could not reach OpenDota", e.message)
     }
 
     // --- helpers ----------------------------------------------------------------------

@@ -18,8 +18,11 @@ object ReloadShake {
         fun onShakeEnd()
     }
 
-    /** Safety net in case a reload never reports back (well past the 10 s network timeout). */
-    private val MAX_STEPS = (30_000 / RankRenderer.SHAKE_FRAME_MS).toInt()
+    /**
+     * The longest a shake runs, also if a reload never reports back. OpenDota can take half a
+     * minute to answer; the medal settles after this and the result still shows when it comes.
+     */
+    private val MAX_STEPS = (10_000 / RankRenderer.SHAKE_FRAME_MS).toInt()
 
     private val main = MainThread
     private val listeners = LinkedHashSet<Listener>()

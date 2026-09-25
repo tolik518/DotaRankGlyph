@@ -62,12 +62,15 @@ Versions: AGP 8.10.1, Kotlin 2.0, Gradle 8.11 (the same as Nothing's example pro
   shake / animate in step. A manual reload shakes the last known medal until the request is done (always whole
   cycles); a changed rank then plays `RankAnimation`. If the toy isn't on the Glyph at that moment, the change is
   kept in `RankStore` and played the next time the toy is selected.
-- **Background network**: on Android 15 the app's network is blocked while it is in the background
-  (`dumpsys netpolicy` shows `blocked=APP_BACKGROUND` for its UID), which is exactly when the Glyph toy
-  refreshes. So before a request `RankRepository` checks `ConnectivityManager.getActiveNetwork()` (null when
-  blocked or offline); without a network the request is queued and sent from an expedited one-off job
-  (`RankRefreshJob.scheduleFetchNow`), because Android lifts the block while a job runs. The shake and
-  "checking…" state don't change; after 20 s without the job the attempt counts as "No internet connection".
+- **Background network**: on Android 15 the app's network is blocked while its process is in the background
+  (`dumpsys netpolicy` shows `blocked=APP_BACKGROUND` for its UID). While the Glyph toy is on the matrix the
+  process counts as "important foreground" and may use the network, and jobs may too. As a safety net for
+  everything else, `RankRepository` checks `ConnectivityManager.getActiveNetwork()` (null when blocked or
+  offline) and, without a network, queues the request for an expedited one-off job
+  (`RankRefreshJob.scheduleFetchNow`). After 20 s without the job the attempt counts as "No internet connection".
+- **Slow OpenDota**: under load the player endpoint can take 10–40 s to answer (while `/health` answers in under
+  a second), so the client waits up to 45 s for an answer (10 s to connect), and the reload shake stops after
+  about 10 s; the result still shows (and animates) when it arrives.
 - **`RankWidget`** redraws from the cache after every save. **`RankRefreshJob`** (JobScheduler, network required)
   refreshes at the Auto refresh interval while a widget exists. A force-stop cancels jobs, so the app and the toy
   re-schedule it when they start.
