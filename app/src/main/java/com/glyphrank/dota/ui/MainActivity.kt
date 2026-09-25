@@ -12,14 +12,16 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
 import android.os.SystemClock
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.text.SpannableStringBuilder
-import android.text.TextUtils
 import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -106,8 +108,11 @@ class MainActivity : Activity() {
     private val cooldownOver = Runnable { updateCheckButton() }
 
     private lateinit var input: EditText
-    private lateinit var recentSection: LinearLayout
-    private lateinit var recentList: LinearLayout
+    private lateinit var recentPopup: RecentAccountsPopup
+    /** The keyboard is up; the recent accounts only show together with it. */
+    private var imeVisible = false
+    /** Set while the app itself changes the input text, so the dropdown doesn't react. */
+    private var settingInput = false
     private lateinit var toyPrompt: LinearLayout
     private lateinit var privateHelp: LinearLayout
     private lateinit var privateHelpTitle: TextView
@@ -123,8 +128,9 @@ class MainActivity : Activity() {
         medals = BundledMedals.load(this)
         setContentView(buildLayout())
         setUpIntervalPicker()
-        store.accountId?.let { input.setText(it.toString()) }
+        setInput(store.accountId?.toString().orEmpty())
         render()
+        RankRefreshJob.reschedule(this) // a force-stop cancels the widget's job
         if (savedInstanceState == null) handleShare(intent)
     }
 
@@ -149,6 +155,7 @@ class MainActivity : Activity() {
         repository.removeListener(repositoryListener)
         status.removeCallbacks(ticker)
         shakeBase = null
+        recentPopup.dismiss()
         super.onStop()
     }
 
@@ -159,6 +166,7 @@ class MainActivity : Activity() {
 
     private fun saveAndCheck() {
         if (!checkButton.isEnabled) return // cooling down (the keyboard's Done key ends up here too)
+        closeKeyboard()
         check(PlayerInput.parse(input.text.toString()))
     }
 
@@ -191,20 +199,19 @@ class MainActivity : Activity() {
 
     /** Shows [parsed] in the input field in its shortest form, or the raw [text] if it didn't parse. */
     private fun fillInput(parsed: PlayerInput, text: String) {
-        input.setText(
+        setInput(
             when (parsed) {
                 is PlayerInput.Account -> parsed.accountId.toString()
                 is PlayerInput.SteamVanity -> "steamcommunity.com/id/${parsed.vanityName}"
                 is PlayerInput.Invalid -> text.trim()
             },
         )
-        input.setSelection(input.text.length)
     }
 
     private fun saveAndFetch(accountId: Long) {
         startCooldown()
         repository.setAccount(accountId)
-        input.setText(accountId.toString())
+        setInput(accountId.toString())
         showNotice(null)
         when (val decision = repository.refresh(manual = true)) {
             Decision.Fetch, Decision.Joined ->
@@ -264,7 +271,7 @@ class MainActivity : Activity() {
         if (ReloadShake.isShaking) return // results appear once the shake has finished its cycle
         if (!RankCelebration.isBusy) preview.frame = glyphFrame()
         status.text = statusText()
-        renderRecent()
+        if (recentPopup.isShowing) updateRecentPopup() // new medals or names
         renderPrivateHelp()
         toyPrompt.visibility =
             if (store.cachedForCurrentAccount() != null && !store.toyUsed && !store.toyPromptDone) View.VISIBLE
@@ -287,45 +294,45 @@ class MainActivity : Activity() {
         privateHelp.visibility = if (privateHelpTitle.text.isNullOrEmpty()) View.GONE else View.VISIBLE
     }
 
-    /** Recent accounts other than the current one, with their last known medal; tap to switch, long-press to remove. */
-    private fun renderRecent() {
+    // --- recent accounts dropdown ---------------------------------------------
+
+    /**
+     * Shows the recent accounts under the input field while it has the focus and the keyboard
+     * is up, filtered by what is typed (name or ID). The saved account's own ID counts as
+     * nothing typed, so tapping the field shows the whole list.
+     */
+    private fun updateRecentPopup() {
+        if (!input.hasFocus() || !imeVisible) return recentPopup.dismiss()
         val others = store.recentAccounts.filter { it.accountId != store.accountId }
-        recentSection.visibility = if (others.isEmpty()) View.GONE else View.VISIBLE
-        recentList.removeAllViews()
-        for (entry in others) {
-            val cached = store.cachedFor(entry.accountId)
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(6), 0, dp(6))
-                addView(MatrixPreviewView(this@MainActivity).apply {
-                    frame = cached?.let { renderer.render(it.player.state, medals, store.showImmortalRank) }
-                        ?: renderer.message("")
-                }, LinearLayout.LayoutParams(dp(RECENT_MEDAL_DP), dp(RECENT_MEDAL_DP)))
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.VERTICAL
-                    addView(text(entry.name ?: "Player", 15f, TEXT).apply {
-                        isSingleLine = true
-                        ellipsize = TextUtils.TruncateAt.END
-                    })
-                    val rank = cached?.let { RankTier.describe(it.player.state) + "  ·  " } ?: ""
-                    addView(text("$rank${entry.accountId}", 13f, MUTED).apply { isSingleLine = true })
-                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = dp(12)
-                })
-                setOnClickListener {
-                    if (!checkButton.isEnabled) return@setOnClickListener
-                    input.setText(entry.accountId.toString())
-                    saveAndCheck()
-                }
-                setOnLongClickListener {
-                    store.recentAccounts = RecentAccounts.remove(store.recentAccounts, entry.accountId)
-                    renderRecent()
-                    true
-                }
-            }
-            recentList.addView(row)
-        }
+        val typed = input.text.toString().trim()
+        // The saved ID (or part of it, while deleting it) counts as nothing typed yet.
+        val query = if (store.accountId?.toString()?.startsWith(typed) == true) "" else typed
+        recentPopup.show(RecentAccounts.filter(others, query))
+    }
+
+    private fun pickRecent(entry: RecentAccounts.Entry) {
+        setInput(entry.accountId.toString())
+        closeKeyboard()
+        if (checkButton.isEnabled) saveAndCheck() else showNotice("Just checked. Tap Save & check rank in a moment.")
+    }
+
+    private fun removeRecent(entry: RecentAccounts.Entry) {
+        store.recentAccounts = RecentAccounts.remove(store.recentAccounts, entry.accountId)
+        updateRecentPopup()
+    }
+
+    private fun closeKeyboard() {
+        recentPopup.dismiss()
+        getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(input.windowToken, 0)
+        input.clearFocus() // the focus moves to the page itself, see buildLayout
+    }
+
+    /** Sets the input text without the dropdown treating it as typing. */
+    private fun setInput(text: String) {
+        settingInput = true
+        input.setText(text)
+        input.setSelection(input.text.length)
+        settingInput = false
     }
 
     private fun statusText(): CharSequence {
@@ -457,6 +464,9 @@ class MainActivity : Activity() {
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(pad, pad, pad, pad)
+            // Takes the focus at start and after closeKeyboard(), so the input (and its dropdown)
+            // only gets it when tapped.
+            isFocusableInTouchMode = true
         }
         column.addView(text("DOTA RANK", 28f, TEXT, bold = true))
         column.addView(text("Glyph Toy for Nothing Phone (3)", 14f, MUTED), spaced(bottom = 24))
@@ -472,7 +482,26 @@ class MainActivity : Activity() {
             setOnEditorActionListener { _, action, _ ->
                 if (action == EditorInfo.IME_ACTION_DONE) { saveAndCheck(); true } else false
             }
+            setOnFocusChangeListener { _, _ -> updateRecentPopup() }
+            setOnClickListener { updateRecentPopup() } // tapped again after the dropdown was closed
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+                override fun afterTextChanged(s: Editable?) {
+                    if (!settingInput) updateRecentPopup()
+                }
+            })
         }
+        recentPopup = RecentAccountsPopup(
+            anchor = input,
+            medalFor = { entry ->
+                store.cachedFor(entry.accountId)?.let { renderer.render(it.player.state, medals, store.showImmortalRank) }
+                    ?: renderer.message("")
+            },
+            rankFor = { entry -> store.cachedFor(entry.accountId)?.let { RankTier.describe(it.player.state) } },
+            onPick = ::pickRecent,
+            onRemove = ::removeRecent,
+        )
         val inputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -492,13 +521,6 @@ class MainActivity : Activity() {
 
         notice = text("", 14f, TEXT).apply { visibility = View.GONE }
         column.addView(notice, spaced(top = 8))
-
-        recentSection = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        recentSection.addView(text("RECENT", 14f, TEXT, bold = true))
-        recentList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        recentSection.addView(recentList)
-        recentSection.addView(text("Tap to switch, long-press to remove.", 13f, MUTED))
-        column.addView(recentSection, spaced(top = 16))
 
         status = text("", 16f, TEXT)
         column.addView(status, spaced(top = 16, bottom = 16))
@@ -644,6 +666,12 @@ class MainActivity : Activity() {
         scroll.setOnApplyWindowInsetsListener { v, insets ->
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.ime())
             v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            val ime = insets.isVisible(WindowInsets.Type.ime())
+            if (ime != imeVisible) {
+                imeVisible = ime
+                if (!ime) input.clearFocus() // Back closed the keyboard: close the dropdown too
+                v.post { updateRecentPopup() } // after the new layout, so the dropdown sits right
+            }
             insets
         }
         return scroll
@@ -668,7 +696,6 @@ class MainActivity : Activity() {
         val ERROR = Color.rgb(0xD7, 0x19, 0x21)
         const val CHECK_COOLDOWN_MS = 5_000L
         const val TICK_MS = 30_000L
-        const val RECENT_MEDAL_DP = 48
 
         private fun ranked(medal: Medal, stars: Int) = RankState.Ranked(medal, stars)
         val SAMPLE_CHANGES = listOf(

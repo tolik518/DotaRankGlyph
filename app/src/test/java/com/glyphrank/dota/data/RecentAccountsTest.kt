@@ -21,6 +21,16 @@ class RecentAccountsTest {
         assertEquals(listOf(7L, 6, 5, 4, 3), list.map { it.accountId })
     }
 
+    @Test fun `filter by name or id while typing`() {
+        val list = listOf(zeitboy, zq, Entry(1543840191, null))
+        assertEquals(list, RecentAccounts.filter(list, "  "))
+        assertEquals(listOf(zq), RecentAccounts.filter(list, "zq"))
+        assertEquals(listOf(zeitboy), RecentAccounts.filter(list, "Z31780y"))
+        assertEquals(listOf(zeitboy), RecentAccounts.filter(list, "4045"))
+        assertEquals(listOf(Entry(1543840191, null)), RecentAccounts.filter(list, "154"))
+        assertEquals(emptyList<Entry>(), RecentAccounts.filter(list, "76561198000718824"))
+    }
+
     @Test fun `remove`() =
         assertEquals(listOf(zq), RecentAccounts.remove(listOf(zeitboy, zq), zeitboy.accountId))
 

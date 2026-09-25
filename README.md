@@ -37,7 +37,8 @@ In the app:
 - **Paste** fills the field from the clipboard (read only when you tap it) and shortens links to the ID.
 - **Share** a Steam profile from the Steam app or a browser to *Check Dota rank*: the link (also inside a longer
   text) is filled in and checked. Turn off **Show in the share menu** to remove the app from the share sheet.
-- **Recent** lists the last 5 checked accounts with their last known medal: tap to switch, long-press to remove.
+- **Recent accounts** drop down under the input field while you type in it (the last 5 checked, with medal, name
+  and rank). Typing filters them by name or ID; tap one to switch, tap ✕ or swipe it sideways to remove it.
   Every recent account keeps its own cached rank, so switching shows its medal right away.
 - The status shows when the rank was last updated, and the last error in red if the latest check failed.
 - **Home-screen widget** (*Add home-screen widget*, or the launcher's widget list): the medal as Glyph Matrix dots;
@@ -125,7 +126,7 @@ No AndroidX or Compose: the only dependency is the Glyph SDK, so the build stays
 
 ## Tests
 
-`./gradlew test` runs 117 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
+`./gradlew test` runs 118 unit tests: rank decoding, ID parsing, OpenDota parsing (using a real captured response),
 the OpenDota client and the Steam custom-URL lookup against a local mock server (captured player responses in `app/src/test/resources/opendota/`;
 404, minute/daily 429, rate-limit headers, 5xx, HTML/truncated bodies, timeouts, no connection, non-Latin names),
 the refresh policy (429 blocks until the UTC reset, low-quota pause, backoff, 5 s gap), the repository end to end

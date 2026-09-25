@@ -16,6 +16,13 @@ object RecentAccounts {
 
     fun remove(list: List<Entry>, accountId: Long): List<Entry> = list.filter { it.accountId != accountId }
 
+    /** Entries whose name contains [query] (any case) or whose ID starts with it; all for a blank query. */
+    fun filter(list: List<Entry>, query: String): List<Entry> {
+        val q = query.trim()
+        if (q.isEmpty()) return list
+        return list.filter { it.name?.contains(q, ignoreCase = true) == true || it.accountId.toString().startsWith(q) }
+    }
+
     fun encode(list: List<Entry>): String = JSONArray().apply {
         list.forEach { e -> put(JSONObject().put("id", e.accountId).apply { e.name?.let { put("name", it) } }) }
     }.toString()

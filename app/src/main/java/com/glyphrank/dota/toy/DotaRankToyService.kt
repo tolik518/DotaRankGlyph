@@ -13,6 +13,7 @@ import com.glyphrank.dota.glyph.MedalArt
 import com.glyphrank.dota.glyph.RankCelebration
 import com.glyphrank.dota.glyph.RankRenderer
 import com.glyphrank.dota.glyph.ReloadShake
+import com.glyphrank.dota.widget.RankRefreshJob
 import com.nothing.ketchum.GlyphMatrixManager
 
 /**
@@ -105,6 +106,7 @@ class DotaRankToyService : GlyphMatrixService("DotaRankToy") {
         ReloadShake.addListener(shakeListener)
         RankCelebration.addListener(celebrationListener, glyph = true)
         repo.playPendingCelebration() // before showCurrent, so the new rank isn't shown first
+        RankRefreshJob.reschedule(context) // a force-stop cancels the widget's job
         showCurrent()
         repo.refresh(manual = false)
     }
