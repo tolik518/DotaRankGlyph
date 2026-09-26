@@ -297,17 +297,20 @@ class MainActivity : Activity() {
     // --- recent accounts dropdown ---------------------------------------------
 
     /**
-     * Shows the recent accounts under the input field while it has the focus and the keyboard
-     * is up, filtered by what is typed (name or ID). The saved account's own ID counts as
-     * nothing typed, so tapping the field shows the whole list.
+     * Shows the saved account and the recent ones under the input field while it has the focus
+     * and the keyboard is up, filtered by what is typed (name or ID). The saved account's own
+     * ID counts as nothing typed, so tapping the field shows the whole list.
      */
     private fun updateRecentPopup() {
         if (!input.hasFocus() || !imeVisible) return recentPopup.dismiss()
-        val others = store.recentAccounts.filter { it.accountId != store.accountId }
+        val recent = store.recentAccounts
+        val current = store.accountId?.let { id ->
+            recent.find { it.accountId == id } ?: RecentAccounts.Entry(id, store.cachedFor(id)?.player?.personaName)
+        }
         val typed = input.text.toString().trim()
         // The saved ID (or part of it, while deleting it) counts as nothing typed yet.
         val query = if (store.accountId?.toString()?.startsWith(typed) == true) "" else typed
-        recentPopup.show(RecentAccounts.filter(others, query))
+        recentPopup.show(RecentAccounts.filter(RecentAccounts.withCurrent(recent, current), query))
     }
 
     private fun pickRecent(entry: RecentAccounts.Entry) {
@@ -501,6 +504,8 @@ class MainActivity : Activity() {
             rankFor = { entry -> store.cachedFor(entry.accountId)?.let { RankTier.describe(it.player.state) } },
             onPick = ::pickRecent,
             onRemove = ::removeRecent,
+            // The saved account stays at the top; removing it would take nothing away.
+            isRemovable = { it.accountId != store.accountId },
         )
         val inputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL

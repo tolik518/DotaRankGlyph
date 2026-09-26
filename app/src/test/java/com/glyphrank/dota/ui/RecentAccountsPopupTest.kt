@@ -44,6 +44,7 @@ class RecentAccountsPopupTest {
             rankFor = { if (it == zq) "Immortal #2488" else null },
             onPick = { picked += it.accountId },
             onRemove = { removed += it.accountId },
+            isRemovable = { it != unnamed },
         )
     }
 
@@ -77,7 +78,7 @@ class RecentAccountsPopupTest {
         assertTrue(popup.isShowing)
         val rows = rows()
         assertEquals(listOf("ZQuixotix", "Immortal #2488", "✕"), texts(rows[0]))
-        assertEquals(listOf("Player 5", "✕"), texts(rows[1]))
+        assertEquals(listOf("Player 5"), texts(rows[1])) // not removable in these tests
     }
 
     @Test fun `showing again updates the open dropdown`() {
@@ -128,6 +129,17 @@ class RecentAccountsPopupTest {
         popup.show(listOf(zq))
         touch(rows()[0], 100f to 20f, 102f to 60f, 104f to 120f)
         assertTrue(removed.isEmpty() && picked.isEmpty())
+    }
+
+    @Test fun `a row that can't be removed has no cross and doesn't swipe`() {
+        popup.show(listOf(zq, unnamed))
+        val row = rows()[1]
+        assertEquals(listOf("Player 5"), texts(row))
+        touch(row, 500f to 20f, 400f to 20f, 150f to 20f)
+        assertTrue(removed.isEmpty() && picked.isEmpty()) // a swipe isn't a tap either
+        assertEquals(0f, row.translationX)
+        touch(row, 100f to 20f)
+        assertEquals(listOf(unnamed.accountId), picked)
     }
 
     @Test fun `a cancelled touch snaps back`() {

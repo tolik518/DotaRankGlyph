@@ -31,6 +31,13 @@ class RecentAccountsTest {
         assertEquals(emptyList<Entry>(), RecentAccounts.filter(list, "76561198000718824"))
     }
 
+    @Test fun `the current account goes to the top, also if it isn't a recent one`() {
+        val other = Entry(1543840191, null)
+        assertEquals(listOf(zq, zeitboy, other), RecentAccounts.withCurrent(listOf(zeitboy, zq, other), zq))
+        assertEquals(listOf(Entry(7, null), zeitboy), RecentAccounts.withCurrent(listOf(zeitboy), Entry(7, null)))
+        assertEquals(listOf(zeitboy), RecentAccounts.withCurrent(listOf(zeitboy), null))
+    }
+
     @Test fun `remove`() =
         assertEquals(listOf(zq), RecentAccounts.remove(listOf(zeitboy, zq), zeitboy.accountId))
 

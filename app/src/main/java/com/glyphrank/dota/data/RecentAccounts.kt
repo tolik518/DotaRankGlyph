@@ -16,6 +16,10 @@ object RecentAccounts {
 
     fun remove(list: List<Entry>, accountId: Long): List<Entry> = list.filter { it.accountId != accountId }
 
+    /** [list] with [current] at the top, also if it was never checked successfully. */
+    fun withCurrent(list: List<Entry>, current: Entry?): List<Entry> =
+        if (current == null) list else listOf(current) + list.filter { it.accountId != current.accountId }
+
     /** Entries whose name contains [query] (any case) or whose ID starts with it; all for a blank query. */
     fun filter(list: List<Entry>, query: String): List<Entry> {
         val q = query.trim()

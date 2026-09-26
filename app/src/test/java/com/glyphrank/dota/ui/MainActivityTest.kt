@@ -400,7 +400,8 @@ class MainActivityTest {
         store.accountId = zq
         store.save(PlayerRank(zq, "ZQuixotix", 80, 2488), nowMs = env.now)
         store.save(PlayerRank(zeitboy.accountId, "Zeitboy", 24, null), nowMs = env.now)
-        store.recentAccounts = listOf(RecentAccounts.Entry(zq, "ZQuixotix"), zeitboy, RecentAccounts.Entry(5, "Someone"))
+        // zq is the saved account, but not the newest recent one
+        store.recentAccounts = listOf(zeitboy, RecentAccounts.Entry(zq, "ZQuixotix"), RecentAccounts.Entry(5, "Someone"))
     }
 
     /** The user taps the input field and the keyboard comes up (or goes down). */
@@ -427,12 +428,27 @@ class MainActivityTest {
         }
     }
 
-    @Test fun `the other recent accounts drop down while typing`() {
+    /** The ✕ of each row in the open dropdown, null for rows without one. */
+    private fun dropdownCrosses(): List<TextView?> {
+        val list = dropdown()!!.contentView as ViewGroup
+        return (0 until list.childCount).map { i ->
+            allViews(list.getChildAt(i)).filterIsInstance<TextView>().singleOrNull { it.text == "✕" }
+        }
+    }
+
+    private fun tapDropdownRow(index: Int) {
+        val row = (dropdown()!!.contentView as ViewGroup).getChildAt(index)
+        val t = android.os.SystemClock.uptimeMillis()
+        row.dispatchTouchEvent(MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, 10f, 10f, 0))
+        row.dispatchTouchEvent(MotionEvent.obtain(t, t, MotionEvent.ACTION_UP, 10f, 10f, 0))
+    }
+
+    @Test fun `the saved account tops the dropdown, the recent ones follow`() {
         withRecentAccounts()
         launch()
         assertTrue(dropdownNames().isEmpty())
         keyboard(up = true)
-        assertEquals(listOf("Zeitboy", "Someone"), dropdownNames()) // the saved ID counts as nothing typed
+        assertEquals(listOf("ZQuixotix", "Zeitboy", "Someone"), dropdownNames()) // the saved ID counts as nothing typed
         input.setText("zeit")
         assertEquals(listOf("Zeitboy"), dropdownNames())
         input.setText("999")
@@ -442,14 +458,36 @@ class MainActivityTest {
         assertNull(dropdown())
     }
 
+    @Test fun `a saved account that was never checked is shown by its ID`() {
+        store.accountId = 777
+        store.recentAccounts = listOf(zeitboy)
+        launch()
+        keyboard(up = true)
+        assertEquals(listOf("Player 777", "Zeitboy"), dropdownNames())
+    }
+
+    @Test fun `the saved account can't be removed from the dropdown`() {
+        withRecentAccounts()
+        launch()
+        keyboard(up = true)
+        assertEquals(listOf(false, true, true), dropdownCrosses().map { it != null })
+    }
+
+    @Test fun `picking the saved account checks it again`() {
+        withRecentAccounts()
+        launch()
+        keyboard(up = true)
+        tapDropdownRow(0)
+        env.finishRequests()
+        assertEquals(zq, store.accountId)
+        assertEquals(listOf("/api/players/$zq"), env.server.requests.map { it.path })
+    }
+
     @Test fun `picking a recent account checks it`() {
         withRecentAccounts()
         launch()
         keyboard(up = true)
-        val row = (dropdown()!!.contentView as ViewGroup).getChildAt(0)
-        val t = android.os.SystemClock.uptimeMillis()
-        row.dispatchTouchEvent(MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, 10f, 10f, 0))
-        row.dispatchTouchEvent(MotionEvent.obtain(t, t, MotionEvent.ACTION_UP, 10f, 10f, 0))
+        tapDropdownRow(1)
         env.finishRequests()
         assertEquals(zeitboy.accountId, store.accountId)
         assertEquals("${zeitboy.accountId}", input.text.toString())
@@ -461,10 +499,9 @@ class MainActivityTest {
         withRecentAccounts()
         launch()
         keyboard(up = true)
-        val list = dropdown()!!.contentView as ViewGroup
-        allViews(list.getChildAt(0)).filterIsInstance<TextView>().single { it.text == "✕" }.performClick()
+        dropdownCrosses()[1]!!.performClick() // Zeitboy
         assertEquals(listOf(zq, 5L), store.recentAccounts.map { it.accountId })
-        assertEquals(listOf("Someone"), dropdownNames())
+        assertEquals(listOf("ZQuixotix", "Someone"), dropdownNames())
     }
 
     // --- buttons that leave the app -----------------------------------------------------

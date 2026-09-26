@@ -20,8 +20,8 @@ import kotlin.math.min
 
 /**
  * The recent accounts as a dropdown under the input field: medal, name and rank per row.
- * Tap a row to pick it; tap ✕ or swipe a row sideways to remove it. It floats over the
- * page and never takes the focus, so the keyboard stays with the input field.
+ * Tap a row to pick it; tap ✕ or swipe a row sideways to remove it, if [isRemovable]. It
+ * floats over the page and never takes the focus, so the keyboard stays with the input field.
  */
 class RecentAccountsPopup(
     private val anchor: View,
@@ -31,6 +31,8 @@ class RecentAccountsPopup(
     private val rankFor: (RecentAccounts.Entry) -> String?,
     private val onPick: (RecentAccounts.Entry) -> Unit,
     private val onRemove: (RecentAccounts.Entry) -> Unit,
+    /** False for rows without ✕ and swipe, e.g. the saved account. */
+    private val isRemovable: (RecentAccounts.Entry) -> Boolean = { true },
 ) {
     private val context = anchor.context
     private val density = context.resources.displayMetrics.density
@@ -87,16 +89,24 @@ class RecentAccountsPopup(
             addView(label(entry.name ?: "Player ${entry.accountId}", 15f, Color.WHITE, bold = true))
             rankFor(entry)?.let { addView(label(it, 13f, MUTED)) }
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(12) })
-        addView(label("✕", 16f, MUTED).apply {
-            gravity = Gravity.CENTER
-            contentDescription = "Remove ${entry.name ?: "account"}"
-            setOnClickListener { onRemove(entry) }
+        val removable = isRemovable(entry)
+        addView(if (removable) {
+            label("✕", 16f, MUTED).apply {
+                gravity = Gravity.CENTER
+                contentDescription = "Remove ${entry.name ?: "account"}"
+                setOnClickListener { onRemove(entry) }
+            }
+        } else {
+            View(context) // keeps the names aligned
         }, LinearLayout.LayoutParams(dp(48), dp(48)))
-        setOnTouchListener(SwipeOrTap(entry))
+        setOnTouchListener(SwipeOrTap(entry, removable))
     }
 
-    /** Tap picks the row; a sideways swipe past a third of its width removes it. */
-    private inner class SwipeOrTap(private val entry: RecentAccounts.Entry) : View.OnTouchListener {
+    /** Tap picks the row; a sideways swipe past a third of its width removes it (if [removable]). */
+    private inner class SwipeOrTap(
+        private val entry: RecentAccounts.Entry,
+        private val removable: Boolean,
+    ) : View.OnTouchListener {
         private var downX = 0f
         private var downY = 0f
         private var dragging = false
@@ -118,7 +128,7 @@ class RecentAccountsPopup(
                         moved = true
                         v.isPressed = false
                     }
-                    if (!dragging && abs(dx) > touchSlop && abs(dx) > abs(dy)) {
+                    if (removable && !dragging && abs(dx) > touchSlop && abs(dx) > abs(dy)) {
                         dragging = true
                         v.parent.requestDisallowInterceptTouchEvent(true)
                     }

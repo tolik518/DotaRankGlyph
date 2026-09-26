@@ -29,7 +29,8 @@ medal, with your stars, or your leaderboard place if you are Immortal. Ranks com
 - Enter your account in almost any form: friend ID, Steam profile link, SteamID, Steam friend code link,
   or an OpenDota / Dotabuff / Stratz link.
 - **Share** a Steam profile from the Steam app or your browser straight to the app.
-- **Recent accounts** drop down when you tap the input field; tap to switch, swipe or ✕ to remove.
+- **Recent accounts** drop down when you tap the input field, your saved account at the top; tap to switch,
+  swipe or ✕ to remove.
 - **Home-screen widget** with your medal and rank.
 - Optional: the **app icon shows your medal**.
 - Clear help when OpenDota can't see your profile.
