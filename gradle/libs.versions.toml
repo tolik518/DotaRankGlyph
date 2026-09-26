@@ -4,12 +4,18 @@ agp = "8.10.1"
 kotlin = "2.0.0"
 junit = "4.13.2"
 json = "20240303"
+robolectric = "4.17"
+pitest = "0.2.27"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 # Real org.json for local unit tests (Android's copy is a stub there).
 json = { group = "org.json", name = "json", version.ref = "json" }
+# Android framework on the JVM for tests of the screen, widget and jobs.
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+# Mutation testing: ./gradlew pitestDebug
+pitest = { id = "pl.droidsonroids.pitest", version.ref = "pitest" }

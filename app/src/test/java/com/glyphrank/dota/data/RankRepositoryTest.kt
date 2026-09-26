@@ -178,6 +178,50 @@ class RankRepositoryTest {
         assertFalse(store.lastErrorForCurrentAccount()!!.isNotFound)
     }
 
+    @Test fun `without an ID nothing is fetched`() {
+        assertEquals(Decision.NoAccount, repo.refresh(manual = true))
+        assertTrue(ioQueue.isEmpty())
+    }
+
+    @Test fun `few requests left today pause automatic refreshes`() {
+        server.handler = {
+            Response(
+                200, """{"profile":{"account_id":$zeitboy,"personaname":"Zeitboy"},"rank_tier":24}""",
+                headers = mapOf("X-Rate-Limit-Remaining-Day" to "10"),
+            )
+        }
+        check()
+        finishRequests()
+        now += 2 * store.refreshIntervalMinutes * 60_000L
+        assertTrue(repo.refresh(manual = false) is Decision.Paused)
+        assertEquals(Decision.Fetch, repo.refresh(manual = true))
+    }
+
+    @Test fun `switching accounts drops the old account's backoff`() {
+        server.handler = { Response(503, "", contentType = "text/html") }
+        check()
+        finishRequests()
+        now += 10_000
+        assertTrue(repo.refresh(manual = false) is Decision.BackingOff)
+        repo.setAccount(116233682)
+        assertEquals(Decision.Fetch, repo.refresh(manual = false))
+    }
+
+    @Test fun `a failing widget or launcher update doesn't break a check`() {
+        val fragile = RankRepository(
+            store = RankStore(FakeSharedPreferences()).apply { appIconShowsMedal = true },
+            client = OpenDotaClient(baseUrl = "${server.baseUrl}/api", connectTimeoutMs = 2_000, readTimeoutMs = 2_000),
+            io = io, main = main, clock = { now }, medals = { null },
+            applyLauncherIcon = { _, _ -> throw IllegalStateException("no launcher") },
+            updateWidgets = { throw IllegalStateException("no widget host") },
+        )
+        fragile.setAccount(zeitboy)
+        assertEquals(Decision.Fetch, fragile.refresh(manual = true))
+        finishRequests()
+        assertEquals(24, fragile.store.cachedForCurrentAccount()?.player?.rankTier)
+        assertFalse(fragile.isLoading)
+    }
+
     @Test fun `a result for an account switched away mid-request is ignored`() {
         check(zeitboy)
         repo.setAccount(116233682)
@@ -210,6 +254,17 @@ class RankRepositoryTest {
         assertNull(store.lastError)
         main.advanceBy(1_000)
         assertFalse(ReloadShake.isShaking)
+    }
+
+    @Test fun `a request the job sent in time isn't failed by the wait limit later`() {
+        networkNow = false
+        check()
+        main.advanceBy(RankRepository.QUEUE_TIMEOUT_MS / 2)
+        assertTrue(repo.runQueuedFetch())
+        finishRequests()
+        main.advanceBy(RankRepository.QUEUE_TIMEOUT_MS)
+        assertNull(store.lastError)
+        assertEquals(24, store.cachedForCurrentAccount()?.player?.rankTier)
     }
 
     @Test fun `a job that doesn't start in time counts as no connection`() {
@@ -248,6 +303,22 @@ class RankRepositoryTest {
         assertFalse(ReloadShake.isShaking)
     }
 
+    @Test fun `a manual check joining an automatic refresh shakes the medal`() {
+        check()
+        finishRequests()
+        now += 2 * store.refreshIntervalMinutes * 60_000L
+        assertEquals(Decision.Fetch, repo.refresh(manual = false))
+        main.advanceBy(500)
+        assertFalse(ReloadShake.isShaking) // automatic refreshes don't shake
+        assertEquals(Decision.Joined, repo.refresh(manual = true))
+        main.advanceBy(500)
+        assertTrue(ReloadShake.isShaking)
+        finishRequests()
+        main.advanceBy(1_000)
+        assertFalse(ReloadShake.isShaking)
+        assertEquals(2, server.requests.size)
+    }
+
     @Test fun `the first rank of an account doesn't shake`() {
         check()
         assertFalse(ReloadShake.isShaking)
@@ -281,6 +352,77 @@ class RankRepositoryTest {
         main.advanceBy(10_000)
         assertTrue(celebrationFrames.isNotEmpty())
         assertNull(store.pendingCelebration)
+    }
+
+    @Test fun `several changes while the toy is away keep the oldest rank as before`() {
+        zeitboyTier = 23
+        check()
+        finishRequests()
+        for (tier in listOf(24, 25)) {
+            zeitboyTier = tier
+            now += 10_000
+            repo.refresh(manual = true)
+            finishRequests()
+            main.advanceBy(10_000)
+        }
+        assertEquals(PlayerRank(zeitboy, null, 23, null), store.pendingCelebration)
+    }
+
+    @Test fun `the toy plays a change it missed once, when it appears`() {
+        zeitboyTier = 23
+        check()
+        finishRequests()
+        zeitboyTier = 24
+        now += 10_000
+        repo.refresh(manual = true)
+        finishRequests()
+        main.advanceBy(10_000) // played in the app only; kept for the Glyph
+
+        RankCelebration.addListener(celebration, glyph = true)
+        repo.playPendingCelebration()
+        main.advanceBy(10_000)
+        assertTrue(celebrationFrames.size > 5)
+        assertNull(store.pendingCelebration)
+
+        celebrationFrames.clear()
+        repo.playPendingCelebration()
+        main.advanceBy(10_000)
+        assertTrue(celebrationFrames.isEmpty())
+    }
+
+    @Test fun `a missed change of another account is dropped, not played`() {
+        zeitboyTier = 23
+        check()
+        finishRequests()
+        zeitboyTier = 24
+        now += 10_000
+        repo.refresh(manual = true)
+        finishRequests()
+        main.advanceBy(10_000)
+        check(116233682)
+        finishRequests()
+
+        RankCelebration.addListener(celebration, glyph = true)
+        repo.playPendingCelebration()
+        main.advanceBy(10_000)
+        assertTrue(celebrationFrames.isEmpty())
+        assertNull(store.pendingCelebration)
+    }
+
+    @Test fun `a removed listener hears nothing more`() {
+        var heard = 0
+        val listener = object : RankRepository.Listener {
+            override fun onStateChanged() {
+                heard++
+            }
+        }
+        repo.addListener(listener)
+        repo.setAccount(zeitboy)
+        assertEquals(1, heard)
+        repo.removeListener(listener)
+        repo.refresh(manual = true)
+        finishRequests()
+        assertEquals(1, heard)
     }
 
     @Test fun `an unchanged rank doesn't animate`() {

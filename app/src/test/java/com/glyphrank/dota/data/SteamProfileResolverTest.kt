@@ -38,6 +38,12 @@ class SteamProfileResolverTest {
         assertEquals(listOf("/id/Zeitboy/?xml=1", "/id/Zeitboy/"), server.requests.map { it.path })
     }
 
+    @Test fun `a missing profile page is not found`() {
+        server.handler = { Response(404, "<html>404</html>", contentType = "text/html") }
+        val e = expectError(SteamLookupException.Kind.NOT_FOUND) { steam.resolveVanity("Zeitboy") }
+        assertEquals("No Steam profile at that URL", e.message)
+    }
+
     @Test fun `neither xml nor page has an id`() {
         server.handler = { Response(200, "<html>nothing useful</html>", contentType = "text/html") }
         expectError(SteamLookupException.Kind.PARSE) { steam.resolveVanity("Zeitboy") }

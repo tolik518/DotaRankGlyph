@@ -13,8 +13,6 @@ import android.widget.RemoteViews
 import com.glyphrank.dota.R
 import com.glyphrank.dota.data.BundledMedals
 import com.glyphrank.dota.data.RankStore
-import com.glyphrank.dota.glyph.RankRenderer
-import com.glyphrank.dota.rank.RankTier
 import com.glyphrank.dota.ui.MainActivity
 import com.glyphrank.dota.ui.MatrixPainter
 
@@ -49,23 +47,9 @@ class RankWidget : AppWidgetProvider() {
             AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, RankWidget::class.java))
 
         private fun render(context: Context, manager: AppWidgetManager, ids: IntArray) {
-            val store = RankStore(context)
-            val renderer = RankRenderer()
-            val cached = store.cachedForCurrentAccount()
-            val frame = when {
-                store.accountId == null -> renderer.message("ID")
-                cached == null -> renderer.loading(0)
-                else -> renderer.render(cached.player.state, BundledMedals.load(context), store.showImmortalRank)
-            }
-            val medal = MatrixPainter.bitmap(frame, MEDAL_PX)
-            val name = when {
-                store.accountId == null -> "Dota Rank"
-                cached == null -> "Player ${store.accountId}"
-                else -> cached.player.personaName ?: "Player ${cached.player.accountId}"
-            }
-            val rank = cached?.let { RankTier.describe(it.player.state) }
-                ?: if (store.accountId == null) "Set your ID in the app" else "Not checked yet"
-            val updated = cached?.let { "Updated ${time(context, it.fetchedAtMs)}" } ?: ""
+            val content = WidgetContent.of(RankStore(context), BundledMedals.load(context))
+            val medal = MatrixPainter.bitmap(content.frame, MEDAL_PX)
+            val updated = content.fetchedAtMs?.let { "Updated ${time(context, it)}" } ?: ""
 
             val open = PendingIntent.getActivity(
                 context, 0,
@@ -74,14 +58,14 @@ class RankWidget : AppWidgetProvider() {
             )
             val small = RemoteViews(context.packageName, R.layout.widget_small).apply {
                 setImageViewBitmap(R.id.widget_medal, medal)
-                setContentDescription(R.id.widget_medal, rank)
+                setContentDescription(R.id.widget_medal, content.rank)
                 setOnClickPendingIntent(R.id.widget_root, open)
             }
             val wide = RemoteViews(context.packageName, R.layout.widget_wide).apply {
                 setImageViewBitmap(R.id.widget_medal, medal)
-                setContentDescription(R.id.widget_medal, rank)
-                setTextViewText(R.id.widget_name, name)
-                setTextViewText(R.id.widget_rank, rank)
+                setContentDescription(R.id.widget_medal, content.rank)
+                setTextViewText(R.id.widget_name, content.name)
+                setTextViewText(R.id.widget_rank, content.rank)
                 setTextViewText(R.id.widget_updated, updated)
                 setOnClickPendingIntent(R.id.widget_root, open)
             }

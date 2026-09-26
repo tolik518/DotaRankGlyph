@@ -17,6 +17,8 @@ class PlayerInputTest {
         assertEquals(zeitboy, PlayerInput.parse("STEAM_0:0:20226548"))
         assertEquals(zeitboy, PlayerInput.parse("STEAM_1:0:20226548"))
         assertEquals(zeitboy, PlayerInput.parse("[U:1:40453096]"))
+        assertEquals(PlayerInput.Account(40453097), PlayerInput.parse("STEAM_0:1:20226548")) // odd account IDs
+        assertEquals(PlayerInput.Account(40453097), PlayerInput.parse("[U:1:40453097]"))
     }
 
     @Test fun `profile and stats site urls`() {
@@ -64,6 +66,15 @@ class PlayerInputTest {
         assertEquals(zeitboy, PlayerInput.fromSharedText("\n 76561198000718824 \n"))
         assertTrue(PlayerInput.fromSharedText("see you at 8 tonight") is PlayerInput.Account) // a number is a number
         assertTrue(PlayerInput.fromSharedText("https://example.com/hello") is PlayerInput.Invalid)
+    }
+
+    @Test fun `the whole 32-bit account range is accepted, nothing beyond`() {
+        assertEquals(PlayerInput.Account(1), PlayerInput.parse("1"))
+        assertEquals(PlayerInput.Account(4294967295), PlayerInput.parse("4294967295"))
+        assertTrue(PlayerInput.parse("4294967296") is PlayerInput.Invalid)
+        assertEquals(PlayerInput.Account(4294967295), PlayerInput.parse("${PlayerInput.STEAM_ID64_BASE + 4294967295}"))
+        assertEquals(PlayerInput.Account(4294967295), PlayerInput.parse("https://s.team/p/wwww-wwww")) // longest friend code
+        assertTrue(PlayerInput.parse("https://s.team/p/bwwww-wwww") is PlayerInput.Invalid)
     }
 
     @Test fun `garbage is rejected`() {

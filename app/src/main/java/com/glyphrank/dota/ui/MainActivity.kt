@@ -60,7 +60,7 @@ class MainActivity : Activity() {
     private val store: RankStore get() = repository.store
     private var medals: MedalArt? = null
     private val renderer = RankRenderer()
-    private val steam = SteamProfileResolver()
+    private val steam = steamResolver()
     private val io: ExecutorService = Executors.newSingleThreadExecutor()
 
     /** Medal being shaken in the preview, in step with the Glyph; null when idle. */
@@ -690,15 +690,18 @@ class MainActivity : Activity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-    private companion object {
-        val TEXT = Color.WHITE
-        val MUTED = Color.rgb(0x8A, 0x8A, 0x8A)
-        val ERROR = Color.rgb(0xD7, 0x19, 0x21)
-        const val CHECK_COOLDOWN_MS = 5_000L
-        const val TICK_MS = 30_000L
+    companion object {
+        /** Robolectric tests point Steam lookups at a mock server. */
+        @Volatile internal var steamResolver: () -> SteamProfileResolver = { SteamProfileResolver() }
+
+        private val TEXT = Color.WHITE
+        private val MUTED = Color.rgb(0x8A, 0x8A, 0x8A)
+        private val ERROR = Color.rgb(0xD7, 0x19, 0x21)
+        private const val CHECK_COOLDOWN_MS = 5_000L
+        private const val TICK_MS = 30_000L
 
         private fun ranked(medal: Medal, stars: Int) = RankState.Ranked(medal, stars)
-        val SAMPLE_CHANGES = listOf(
+        private val SAMPLE_CHANGES = listOf(
             Triple("star up, Guardian 3 → 4", ranked(Medal.GUARDIAN, 3), ranked(Medal.GUARDIAN, 4)),
             Triple("star down, Guardian 4 → 3", ranked(Medal.GUARDIAN, 4), ranked(Medal.GUARDIAN, 3)),
             Triple("tier up, Guardian 5 → Crusader 1", ranked(Medal.GUARDIAN, 5), ranked(Medal.CRUSADER, 1)),

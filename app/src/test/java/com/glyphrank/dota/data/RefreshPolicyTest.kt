@@ -52,6 +52,17 @@ class RefreshPolicyTest {
         assertEquals(Decision.Fetch, RefreshPolicy.decide(1L, true, null, interval, guard, now))
     }
 
+    @Test fun `the 5 s gap counts from the attempt itself`() {
+        val guard = RefreshPolicy.attempt(GuardState(), account, now)
+        assertEquals(Decision.TooSoon(now + 5_000), decide(guard, manual = true))
+        assertEquals(Decision.TooSoon(now + 5_000), decide(guard, manual = true, at = now + 4_999))
+    }
+
+    @Test fun `an attempt in the future (clock turned back) doesn't hold checks back`() {
+        val guard = RefreshPolicy.attempt(GuardState(), account, now + 60_000)
+        assertEquals(Decision.Fetch, decide(guard, manual = true))
+    }
+
     // --- 429 ---------------------------------------------------------------------------
 
     @Test fun `minute limit blocks everything until the next utc minute`() {
@@ -80,6 +91,9 @@ class RefreshPolicyTest {
     @Test fun `a block far in the future is ignored (clock turned back)`() {
         val guard = GuardState(blockedUntilMs = now + 3 * 24 * 3600_000L, blockedDaily = true)
         assertEquals(Decision.Fetch, decide(guard))
+        val longest = now + 24 * 60 * minute + minute // a daily block, set just after midnight
+        assertEquals(Decision.Blocked(longest, daily = true), decide(GuardState(blockedUntilMs = longest, blockedDaily = true)))
+        assertEquals(Decision.Fetch, decide(GuardState(blockedUntilMs = longest + 1, blockedDaily = true)))
     }
 
     // --- remaining-request headers ----------------------------------------------------
@@ -91,6 +105,11 @@ class RefreshPolicyTest {
         assertEquals(Decision.Fetch, decide(guard, manual = true, at = now + minute))
         assertEquals(Decision.Fetch, decide(guard, at = until))
         assertEquals(0L, RefreshPolicy.afterSuccess(guard, fetch(dayLeft = 2999), until).pausedUntilMs)
+    }
+
+    @Test fun `automatic refreshes pause below 50 requests left today`() {
+        assertEquals(0L, RefreshPolicy.afterSuccess(GuardState(), fetch(dayLeft = 50), now).pausedUntilMs)
+        assertEquals(midnightUtc + RefreshPolicy.RESET_MARGIN_MS, RefreshPolicy.afterSuccess(GuardState(), fetch(dayLeft = 49), now).pausedUntilMs)
     }
 
     @Test fun `used-up quota blocks before OpenDota has to say 429`() {

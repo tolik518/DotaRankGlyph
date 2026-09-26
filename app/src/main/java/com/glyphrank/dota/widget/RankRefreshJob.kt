@@ -23,30 +23,20 @@ import com.glyphrank.dota.data.RefreshInterval
  * Both go through [RankRepository], so the rate-limit rules apply and nothing fetches twice.
  */
 class RankRefreshJob : JobService() {
-    private var waiting: RankRepository.Listener? = null
+    private var fetch: JobFetch? = null
 
     override fun onStartJob(params: JobParameters): Boolean {
-        val repo = RankRepository.get(this)
         // Both jobs may use the network while they run, even with the app in the background.
-        val running = repo.runQueuedFetch()
+        val fetch = JobFetch(RankRepository.get(this)) { jobFinished(params, false) }
+        val running = fetch.start()
         Log.d(TAG, "Job ${params.jobId}: ${if (running) "fetching" else "nothing to fetch"}")
-        if (!running) return false
-        val listener = object : RankRepository.Listener {
-            override fun onStateChanged() {
-                if (repo.isLoading) return
-                repo.removeListener(this)
-                waiting = null
-                jobFinished(params, false)
-            }
-        }
-        waiting = listener
-        repo.addListener(listener)
-        return true // finished by the listener
+        if (running) this.fetch = fetch
+        return running // if true, finished by the fetch
     }
 
     override fun onStopJob(params: JobParameters): Boolean {
-        waiting?.let { RankRepository.get(this).removeListener(it) }
-        waiting = null
+        fetch?.cancel()
+        fetch = null
         return false // the next periodic run will try again
     }
 

@@ -244,7 +244,8 @@ class RankRepository internal constructor(
             scheduleBackgroundFetch = { RankRefreshJob.scheduleFetchNow(app) },
         )
 
-        @Volatile private var instance: RankRepository? = null
+        /** Created on first use; Robolectric tests put in one that talks to a mock server. */
+        @Volatile internal var instance: RankRepository? = null
 
         fun get(context: Context): RankRepository =
             instance ?: synchronized(this) {

@@ -20,6 +20,7 @@ Then either open the project in Android Studio and press Run, or:
 ./gradlew assembleDebug                      # builds app/build/outputs/apk/debug/app-debug.apk
 ./gradlew installDebug                       # builds and installs it on the connected phone
 ./gradlew testDebugUnitTest                  # runs the unit tests
+./gradlew verifyDebugCoverage                # runs them and fails if coverage dropped (also part of check)
 ```
 
 Versions: AGP 8.10.1, Kotlin 2.0, Gradle 8.11 (the same as Nothing's example project), `compileSdk`/`targetSdk` 35,
@@ -113,9 +114,9 @@ Steam doesn't document its limits for these pages; on a 429 the app reports it a
 | `data/OpenDotaClient.kt`, `SteamProfileResolver.kt` | The two network clients |
 | `data/RefreshInterval.kt`, `LauncherIcon.kt`, `BundledMedals.kt` | Interval choices, launcher alias switch, medal art loader |
 | `glyph/` | Matrix geometry, 3×5 font, medal renderer, medal art, reload shake, rank-change animation |
-| `toy/` | The Glyph Toy and its base class |
+| `toy/` | The Glyph Toy: its behaviour (`ToyController`), the service and its base class |
 | `ui/` | Settings screen, matrix preview, recent-accounts dropdown |
-| `widget/` | Home-screen widget and its refresh job |
+| `widget/` | Home-screen widget (`WidgetContent`: what it shows) and its refresh job (`JobFetch`: one run) |
 | `util/MainThread.kt` | Main-thread scheduler, replaced by a fake in tests |
 | `app/src/main/assets/dota_rank_medals.json` | Bundled medal art |
 | `tools/make_icons.py` | Generates the launcher icons from the medal art |
@@ -123,12 +124,33 @@ Steam doesn't document its limits for these pages; on a 429 the app reports it a
 
 ## Tests
 
-`./gradlew testDebugUnitTest` runs the JVM unit tests (no phone needed). They cover rank decoding, account input
-parsing, the OpenDota client and the Steam lookup against a local `MockHttpServer` (captured responses, 404,
-minute/daily 429, rate-limit headers, 5xx, broken bodies, timeouts, no connection), the refresh policy,
-`RankRepository` end to end (with `FakeSharedPreferences` and a `FakeScheduler` in virtual time), the per-account
-cache and its migration, the recent-accounts list, the renderer (star pips, Immortal plate, nothing outside the
-LED circle), the rank-change animations, the medal art and the launcher aliases.
+`./gradlew testDebugUnitTest` runs all tests on the JVM (no phone needed). There are two kinds:
+
+- **Plain JVM tests** for the logic: rank decoding, account input parsing, the OpenDota client and the Steam lookup
+  against a local `MockHttpServer` (captured responses, 404, minute/daily 429, rate-limit headers, 5xx, broken
+  bodies, timeouts, no connection), the refresh policy, `RankRepository` and `ToyController` end to end (with
+  `FakeSharedPreferences` and a `FakeScheduler` in virtual time), the per-account cache and its migration, the
+  recent-accounts list, the renderer, the rank-change animations, the medal art and the launcher aliases.
+- **Robolectric tests** (`@RunWith(RobolectricTestRunner::class)`) for the Android parts, with the real layouts,
+  assets and manifest: the settings screen (`MainActivityTest`: typing, sharing, pasting, Steam lookups, errors,
+  rate limits, the dropdown, the settings), the widget, the jobs, the launcher icon, the preview painter and the
+  toy service. `TestRepository` puts a `RankRepository` into the app that asks `MockHttpServer` instead of
+  OpenDota and has its own clock; the toy test binds the real Glyph SDK to a fake Nothing Glyph service that
+  records the frames. Robolectric downloads its Android runtime once, on the first run.
+
+Name tests after the behaviour a user would notice, and assert on what they would see (screen text, the frame on
+the Glyph, what is stored), not on which methods were called.
+
+### Coverage and mutation testing
+
+- `./gradlew createDebugUnitTestCoverageReport` writes the coverage report to
+  `app/build/reports/coverage/test/debug/index.html`. `verifyDebugCoverage` (part of `check`) fails if it drops
+  below 90 % of lines / 75 % of branches overall, or 93 % / 78 % in `data`, `glyph` and `rank`.
+- `./gradlew pitestDebug` (about a minute) runs mutation testing with [PIT](https://pitest.org) on the logic
+  classes: it changes the code, e.g. flips a condition or a boundary, and checks that some test fails. The report
+  is in `app/build/reports/pitest/debug/index.html`. A mutation that survives is a change no test would notice;
+  write a test for it if it is a real behaviour. Many survivors are harmless (Kotlin's null checks, log texts,
+  pixel math in the renderer), so there is no threshold.
 
 Rules for test data:
 
@@ -165,7 +187,8 @@ toy is showing). To see a real one, stop the app, lower `tier` for your account 
 ## Code style
 
 - **No AndroidX or Compose**: plain Android Views and framework APIs, so the only dependency is the Glyph SDK.
-  Please keep it that way unless there is a strong reason.
+  Please keep it that way unless there is a strong reason. (Only the tests use AndroidX, through Robolectric;
+  that is why `gradle.properties` sets `android.useAndroidX`.)
 - Kotlin, 4 spaces, trailing commas, comments that explain *why*. Match the style of the surrounding code.
 - Keep the UI text short and plain. The Glyph never shows errors; the app does.
 - Put logic that can be tested into plain classes or functions (like `RefreshPolicy`, `RankAnimation`) and add tests.
@@ -174,7 +197,7 @@ toy is showing). To see a real one, stop the app, lower `tier` for your account 
 
 1. Open an issue first for bigger changes, so we can agree on the approach.
 2. Keep pull requests focused; one topic per PR.
-3. Make sure `./gradlew testDebugUnitTest assembleDebug` passes, and say what you checked on a phone.
+3. Make sure `./gradlew verifyDebugCoverage assembleDebug` passes, and say what you checked on a phone.
 4. Update the README (user-facing changes), this file (developer-facing changes) or the roadmap if needed.
 
 By contributing you agree that your contributions are licensed under the project's [MIT License](LICENSE).

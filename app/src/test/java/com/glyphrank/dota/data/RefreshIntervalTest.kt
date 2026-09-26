@@ -33,6 +33,8 @@ class RefreshIntervalTest {
     @Test fun `labels`() {
         assertEquals("Every 5 min", RefreshInterval.label(5))
         assertEquals("Every 3 h", RefreshInterval.label(180))
+        assertEquals("Every 59 min", RefreshInterval.label(59))
+        assertEquals("Every 1 h", RefreshInterval.label(60))
         assertEquals("Once a day", RefreshInterval.label(24 * 60))
     }
 }
